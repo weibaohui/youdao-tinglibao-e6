@@ -1,0 +1,12 @@
+# Binaries
+src/hello_screen/hello_screen
+src/launcher_watcher/launcher_watcher
+src/web_server/web_server
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp logs
+*.log
+*.tmp
