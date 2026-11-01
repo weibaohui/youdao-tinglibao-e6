@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#
+# 有道听力宝 E6 (YDLE6) · MiniApp 一键构建 / 部署 / 验证
+#
+#   ./build_miniapp.sh                 # 默认用 miniapp/e6_demo_app
+#   ./build_miniapp.sh <app_dir>       # 构建指定工程
+#   E6_ADB=LE62200008802358 ./build_miniapp.sh   # 走 USB 通道
+#
+# 流程：qjsc 编译 → 打包 .amr → adb push → miniapp_cli install → start
+#       → miniapp_cli capture 抓屏 → 拉取截图 → 打印应用日志
+#
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$HERE/.." && pwd)"
+
+APP_DIR="${1:-$REPO/miniapp/e6_demo_app}"
+DEVICE="${E6_ADB:-192.168.0.109:5555}"
+SHOT="${SHOT:-/tmp/e6_miniapp.png}"
+LOG="${LOG:-/userdata/applog/YD_PEN_APP.log}"
+
+APPID="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['appid'])" "$APP_DIR/manifest.json")"
+mkdir -p "$REPO/miniapp/build"
+AMR="$REPO/miniapp/build/${APPID}.amr"
+
+echo "==> AppID   : $APPID"
+echo "==> Device  : $DEVICE"
+echo "==> Source  : $APP_DIR"
+
+echo "==> [1/5] 编译并打包"
+python3 "$REPO/miniapp/host_tools/build_amr.py" "$APP_DIR" -o "$AMR"
+
+echo "==> [2/5] 推送到设备"
+adb -s "$DEVICE" push "$AMR" "/tmp/${APPID}.amr" >/dev/null
+
+echo "==> [3/5] 安装"
+adb -s "$DEVICE" shell "miniapp_cli install /tmp/${APPID}.amr"
+
+echo "==> [4/5] 启动"
+adb -s "$DEVICE" shell "miniapp_cli start $APPID"
+sleep 4
+
+echo "==> [5/5] 抓屏取证"
+adb -s "$DEVICE" shell "miniapp_cli capture $SHOT" >/dev/null
+adb -s "$DEVICE" pull "$SHOT" "$SHOT" >/dev/null
+echo "    截图已保存: $SHOT"
+
+echo
+echo "==> 应用日志（最近 25 条）"
+adb -s "$DEVICE" shell "grep \"console($APPID)\" $LOG | tail -25"
+
+echo
+echo "==> 最近错误"
+adb -s "$DEVICE" shell "grep -n 'ReferenceError\|TypeError\|SyntaxError' $LOG | tail -5" || true
+
+echo
+echo "完成。"

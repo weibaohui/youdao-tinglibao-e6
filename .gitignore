@@ -10,3 +10,7 @@ Thumbs.db
 # Temp logs
 *.log
 *.tmp
+
+# MiniApp build output
+miniapp/build/
+miniapp/e6_demo_app/*.js.bin

@@ -42,7 +42,12 @@ youdao-tinglibao-e6/
 ├── README.md               # 项目主文档
 ├── docs/                   # 核心原理解析
 │   ├── HARDWARE.md         # 硬件架构、引脚定义与 eMMC 分区表
-│   └── ROOT_GUIDE.md       # Root 提权与 EROFS 哈希热补丁全教程
+│   ├── ROOT_GUIDE.md       # Root 提权与 EROFS 哈希热补丁全教程
+│   └── MINIAPP_DEV.md      # Falcon 轻应用开发完全指南（入口契约/四大能力）
+├── miniapp/                # Falcon 轻应用（.amr）开发套件
+│   ├── build_miniapp.sh    # 一键构建 → 部署 → 启动 → 抓屏取证
+│   ├── e6_demo_app/        # 四合一能力演示应用（界面/联网/文件/声音）
+│   └── host_tools/         # QuickJS 编译器 + .amr 打包器
 ├── src/                    # 原生自制程序源码
 │   ├── hello_screen/       # 60FPS DRM 无闪烁双缓冲图形程序 (Go 实现)
 │   ├── launcher_watcher/   # 原生桌面应用点击事件捕获与唤醒守护进程
@@ -55,6 +60,37 @@ youdao-tinglibao-e6/
     ├── connect_wifi.sh     # Wi-Fi ADB 无线连接脚本
     └── push_and_run.sh     # 一键推送 ARM 二进制到设备运行
 ```
+
+### 📦 `miniapp/` —— Falcon 轻应用（`.amr`）开发套件
+
+这是**设备原生支持**的应用形态：官方 launcher、网易云音乐、百度网盘
+全都是 Falcon MiniApp（QuickJS + Vue 风格组件 + Yoga Flexbox + Skia 2D）。
+
+```text
+miniapp/
+├── build_miniapp.sh       # 一键：编译 → 部署 → 启动 → 抓屏 → 打印日志
+├── e6_demo_app/           # 四合一能力演示应用（界面/联网/文件/声音）
+│   ├── app.js             #   入口：App 类 + 页面基类注册 + 页面加载器
+│   ├── index.js           #   根页面组件
+│   ├── manifest.json      #   应用清单 + MD5 签名表
+│   ├── app_icon.png       #   桌面图标
+│   └── assets/beep.wav    #   应用自带音频
+├── host_tools/            # 构建工具链
+│   ├── qjsc               #   QuickJS 编译器（macOS arm64）
+│   ├── build_amr.py       #   .amr 打包器（自动签名 + adb 部署）
+│   └── compile_js_bin.py
+└── e6_demo_app.amr        # 构建产物
+```
+
+一键跑起来：
+
+```bash
+cd miniapp && ./build_miniapp.sh
+```
+
+> **完整开发指南见 [`docs/MINIAPP_DEV.md`](docs/MINIAPP_DEV.md)** ——
+> 含入口契约（`App()` 为什么不能用）、四大能力的可用 API 形状、
+> E6 模块清单、样式白名单等，全部真机实测 + 官方字节码反汇编双重验证。
 
 ---
 
@@ -86,6 +122,20 @@ bash tools/connect_wifi.sh 192.168.0.109
 ```bash
 bash tools/push_and_run.sh src/hello_screen/hello_screen
 ```
+
+### 4. 编译并安装 Falcon 轻应用（MiniApp）
+
+听力宝的系统应用本身就是 Falcon MiniApp，用同样的方式给它装一个自己的：
+
+```bash
+cd miniapp && ./build_miniapp.sh
+```
+
+脚本会自动完成：QuickJS 编译 → 打包 `.amr` → ADB 推送 →
+`miniapp_cli install` → `miniapp_cli start` → 抓屏取证 → 打印应用日志。
+
+装完在桌面就能看到「E6 能力秀」图标，点开是一个实时自测页：
+界面渲染、HTTP 联网、文件写入、声音播放四项能力逐项显示结果。
 
 ---
 
