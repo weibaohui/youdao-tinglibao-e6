@@ -88,6 +88,13 @@ miniapp/
 cd miniapp && ./build_miniapp.sh
 ```
 
+<p align="center">
+  <img src="docs/images/e6_miniapp_demo.png" width="240" alt="E6 能力秀真机运行画面">
+</p>
+
+> 上图是真机截图：启动即自动自测 **界面渲染 / HTTP 联网 / 文件读写 / 声音播放**
+> 四项能力，状态实时显示在屏幕上（240×320 竖屏）。
+
 > **完整开发指南见 [`docs/MINIAPP_DEV.md`](docs/MINIAPP_DEV.md)** ——
 > 含入口契约（`App()` 为什么不能用）、四大能力的可用 API 形状、
 > E6 模块清单、样式白名单等，全部真机实测 + 官方字节码反汇编双重验证。
