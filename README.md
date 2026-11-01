@@ -43,7 +43,8 @@ youdao-tinglibao-e6/
 ├── docs/                   # 核心原理解析
 │   ├── HARDWARE.md         # 硬件架构、引脚定义与 eMMC 分区表
 │   ├── ROOT_GUIDE.md       # Root 提权与 EROFS 哈希热补丁全教程
-│   └── MINIAPP_DEV.md      # Falcon 轻应用开发完全指南（入口契约/四大能力）
+│   ├── MINIAPP_DEV.md      # Falcon 轻应用开发完全指南（入口契约/四大能力）
+│   └── SCREENSHOT_AND_INPUT.md  # 真机截图与触摸注入（点击界面）完全指南
 ├── miniapp/                # Falcon 轻应用（.amr）开发套件
 │   ├── build_miniapp.sh    # 一键构建 → 部署 → 启动 → 抓屏取证
 │   ├── e6_demo_app/        # 四合一能力演示应用（界面/联网/文件/声音）
@@ -51,6 +52,7 @@ youdao-tinglibao-e6/
 ├── src/                    # 原生自制程序源码
 │   ├── hello_screen/       # 60FPS DRM 无闪烁双缓冲图形程序 (Go 实现)
 │   ├── launcher_watcher/   # 原生桌面应用点击事件捕获与唤醒守护进程
+│   ├── tap/                # e6_tap：触摸屏注入器（点击/滑动/长按）
 │   └── web_server/         # 极轻量级板载 Web 文件/管理服务器
 ├── custom_app/             # 桌面自制应用模板 (独立 AppID 注册包与图标)
 │   ├── manifest.json       # 轻应用元数据与 SHA/MD5 校验
@@ -58,7 +60,9 @@ youdao-tinglibao-e6/
 └── tools/                  # 常用开发脚本
     ├── build_all.sh        # 一键交叉编译所有组件
     ├── connect_wifi.sh     # Wi-Fi ADB 无线连接脚本
-    └── push_and_run.sh     # 一键推送 ARM 二进制到设备运行
+    ├── push_and_run.sh     # 一键推送 ARM 二进制到设备运行
+    ├── e6_ui.sh            # 界面自动化：截图/点击/滑动/长按/日志/diff
+    └── pngdiff.py          # 像素级 A/B diff（判定操作是否真的生效）
 ```
 
 ### 📦 `miniapp/` —— Falcon 轻应用（`.amr`）开发套件
@@ -98,6 +102,40 @@ cd miniapp && ./build_miniapp.sh
 > **完整开发指南见 [`docs/MINIAPP_DEV.md`](docs/MINIAPP_DEV.md)** ——
 > 含入口契约（`App()` 为什么不能用）、四大能力的可用 API 形状、
 > E6 模块清单、样式白名单等，全部真机实测 + 官方字节码反汇编双重验证。
+
+---
+
+## 🖱️ 界面自动化：截图与点击
+
+听力宝没有 `input` / `sendevent` 命令，所以 `adb shell input tap` 是一条**空操作**
+（返回 0，却什么也没发生）。本仓库提供两条**真机实测可用**的路径：
+
+```bash
+# 截图（官方 miniapp_cli，240×320 PNG）
+./tools/e6_ui.sh shot out.png
+
+# 点击 / 滑动 / 长按（自研 e6_tap，直接写 /dev/input/event3）
+./tools/e6_ui.sh tap   177 295
+./tools/e6_ui.sh swipe 200 60 40 240
+./tools/e6_ui.sh long  60 200 800
+
+# A/B 判定：画面到底变了没有（差异像素为 0 = 操作没生效）
+./tools/e6_ui.sh verify before.png after.png
+```
+
+<p align="center">
+  <img src="docs/images/e6_tap_ab.png" alt="点击注入 A/B 验证">
+</p>
+
+> 上图左→右：**①** 初始画面 → **②** 点中性空白区（对照组，MD5 与 ① 完全一致）
+> → **③** 点「响一声」按钮，927 个像素发生变化，橙框标出即变化区域。
+
+触摸坐标与 240×320 逻辑坐标 **1:1 对应**（无旋转无偏移），
+所以**在截图上量到的像素坐标可以直接拿去点击**。
+
+> **完整指南见 [`docs/SCREENSHOT_AND_INPUT.md`](docs/SCREENSHOT_AND_INPUT.md)** ——
+> 含坐标系统实测依据、内核事件流抓包证据、"同坐标连点事件流里没有 X/Y" 的成因、
+> 以及黑屏判别（318 字节纯黑 PNG）等全部踩坑记录。
 
 ---
 

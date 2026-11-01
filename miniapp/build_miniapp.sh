@@ -41,9 +41,16 @@ adb -s "$DEVICE" shell "miniapp_cli start $APPID"
 sleep 4
 
 echo "==> [5/5] 抓屏取证"
-adb -s "$DEVICE" shell "miniapp_cli capture $SHOT" >/dev/null
+# ★ E6 的 adbd 不透传 shell 退出码，所以不能靠 $? 判断成败，改看 stdout 里的 ret 字段。
+CAP_OUT="$(adb -s "$DEVICE" shell "miniapp_cli capture $SHOT")"
+echo "$CAP_OUT" | grep -q '"ret": 0' || { echo "✗ 截图失败: $CAP_OUT" >&2; exit 1; }
 adb -s "$DEVICE" pull "$SHOT" "$SHOT" >/dev/null
-echo "    截图已保存: $SHOT"
+SHOT_SIZE="$(wc -c < "$SHOT" | tr -d ' ')"
+echo "    截图已保存: $SHOT ($SHOT_SIZE B)"
+# ★ 318 字节 = 纯黑 PNG = app 没渲染出来（黑屏），不是抓屏坏了。
+if [ "$SHOT_SIZE" = "318" ]; then
+  echo "    ⚠️ 318 B = 纯黑，应用没有渲染出来，请查下面的错误日志" >&2
+fi
 
 echo
 echo "==> 应用日志（最近 25 条）"
