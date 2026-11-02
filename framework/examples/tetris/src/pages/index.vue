@@ -33,7 +33,7 @@
 import buttonEventModule from 'buttonEvent';
 
 /* ---------- 形状定义：每种方块的基础矩阵，旋转态运行时生成 ---------- */
-const COLS = 10, ROWS = 17, CELL = 13;
+const COLS = 10, ROWS = 16, CELL = 15;
 const BASE = {
   I: { m: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], c: '#31c7ef' },
   O: { m: [[1,1],[1,1]], c: '#f7d308' },
@@ -433,6 +433,6 @@ export default {
   padding-left: 10px; padding-right: 10px; justify-content: space-between;
 }
 .main { flex-direction: row; padding-left: 8px; padding-top: 4px; }
-.panel { padding-left: 10px; padding-top: 4px; width: 90px; }
+.panel { padding-left: 8px; padding-top: 4px; width: 72px; }
 .btns { flex-direction: row; padding-left: 8px; padding-right: 3px; margin-top: 8px; }
 </style>
