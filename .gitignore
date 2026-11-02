@@ -20,3 +20,7 @@ miniapp/glm_usage_app/*.js.bin
 miniapp/*/config.json
 miniapp/*/state.json
 src/e6_debug_server/e6_debug_server
+
+# e6app framework build artifacts & deps
+framework/node_modules/
+framework/lib/__pycache__/

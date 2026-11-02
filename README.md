@@ -139,6 +139,18 @@ miniapp/
 └── build/                 # 构建产物（.amr）
 ```
 
+> ★ 更进一步的开发体验用 **`framework/`（e6app 框架）**：写 **Vue 单文件组件**，
+> `e6app dev` 存盘即热重载上屏。组件库 + HTTP/Storage/Sound 包装层齐备，
+> 详见 [`framework/README.md`](framework/README.md)。
+
+```text
+framework/                 # e6app —— Vue SFC → QuickJS 字节码
+├── bin/e6app              #   CLI：create / build / run / dev
+├── lib/sfc_compiler.js    #   Vue 2.6 SFC → Falcon render（MIT, 改编自 s7pro-guide）
+├── runtime/e6ui.js        #   组件库 + http/storage/sound 包装（构建时内联）
+└── templates/basic/       #   工程模板
+```
+
 一键跑起来：
 
 ```bash

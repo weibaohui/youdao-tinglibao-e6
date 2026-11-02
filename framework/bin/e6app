@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# e6app CLI 入口（bash 薄壳 → python 实现）
+exec python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/e6app.py" "$@"

@@ -54,6 +54,15 @@ e6_resolve_ip() {
   return 0
 }
 
+# 实机验证：目标真的能跑 adb shell 吗（防 LAN 里其他设备占了 5555 的误判）
+e6_adb_ok() {
+  local target="$1"
+  case "$target" in
+    *:5555) adb connect "$target" >/dev/null 2>&1 ;;
+  esac
+  adb -s "$target" shell echo ok 2>/dev/null | grep -q ok
+}
+
 # ADB 目标（USB 序列号 或 IP:5555）
 e6_resolve_device() {
   if [ -n "${E6_ADB:-}" ]; then echo "$E6_ADB"; return 0; fi
@@ -61,15 +70,22 @@ e6_resolve_device() {
   if adb devices 2>/dev/null | grep -q "^${E6_USB_SERIAL}[[:space:]]"; then
     echo "$E6_USB_SERIAL"; return 0
   fi
+  # 已连接的无线目标优先（之前 connect 过且还活着就直接用）
+  local already
+  already="$(adb devices 2>/dev/null | awk '/:5555[[:space:]]+device$/{print $1}')"
+  local t
+  for t in $already; do
+    if e6_adb_ok "$t"; then echo "$t"; return 0; fi
+  done
   local ips ip first=""
   ips="$(e6_arp_ips)"
   [ -z "$ips" ] && { e6_warm_arp; ips="$(e6_arp_ips)"; }
   [ -z "$ips" ] && { echo ""; return 1; }
-  # 设备可能同时持有多个 IP（STA + 自身热点），优先选 5555 开着的那���
+  # 设备可能同时持有多个 IP；候选必须通过 nc + adb 实机双重验证
   while read -r ip; do
     [ -z "$ip" ] && continue
     [ -z "$first" ] && first="$ip"
-    if nc -z -G 1 "$ip" 5555 >/dev/null 2>&1; then
+    if nc -z -G 1 "$ip" 5555 >/dev/null 2>&1 && e6_adb_ok "${ip}:5555"; then
       echo "${ip}:5555"; return 0
     fi
   done <<EOF

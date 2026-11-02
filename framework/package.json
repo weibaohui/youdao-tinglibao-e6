@@ -1,0 +1,12 @@
+{
+  "name": "e6app-framework",
+  "version": "0.2.0",
+  "description": "有道听力宝 E6 Falcon MiniApp 开发框架（Vue SFC → QuickJS 字节码）",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "vue-template-compiler": "^2.6.14",
+    "vue-template-es2015-compiler": "^1.9.1",
+    "weex-styler": "^0.3.1"
+  }
+}
