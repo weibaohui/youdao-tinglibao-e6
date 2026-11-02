@@ -24,3 +24,5 @@ src/e6_debug_server/e6_debug_server
 # e6app framework build artifacts & deps
 framework/node_modules/
 framework/lib/__pycache__/
+framework/examples/*/.e6build/
+framework/examples/*/dist/
