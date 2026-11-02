@@ -59,6 +59,12 @@
    这**不是错误**，App 会降级成账户余额/消耗视图并给出橙色提示。
    团队机构（`projectType=2`）才会返回额度窗口。
 
+4. **API JWT 的 `timestamp` 有新鲜度校验**（2026-11-02 下午实测）
+   同一份 JWT 生成 26 分钟后再打，返回 code 1003「Authorization Token已过期，
+   请重新生成/获取」—— 此时 `exp` 明明还有半小时。服务端同时校验
+   `timestamp` 与当前时间的偏移。所以 JWT **必须现算**：App 内每次请求
+   都重新签名（不受影响）；手动 curl 测试时也要现生成，不能拿旧的复用。
+
 ### 请求头格式
 
 ```http
@@ -166,6 +172,7 @@ cd miniapp && ./build_miniapp.sh glm_usage_app
 | `process.exec` 读大文件内容被截断 | stdout 约 **4KB 上限且静默截断** | 按块读：`dd if=… bs=1024 skip=K count=1 \| xxd -p -c 0` |
 | `console.log` 没有任何输出 | Falcon 只转发 `console.warn` / `console.error` | 调试一律用 `console.warn` |
 | `adb shell` 判断命令成败永远为真 | E6 的 adbd **不透传 shell 退出码** | 看 stdout 内容，别看 `$?` |
+| `miniapp_cli capture` 抓出满屏随机彩噪（且每次内容都不同） | **屏幕处于熄屏状态**（自动锁定到点后熄屏） | 先注入一次触摸点亮屏幕（`/tap` 即可）再抓；抓屏反映帧缓冲，熄屏时帧缓冲就是垃圾 |
 
 真机验证记录（2026-11-02，固件 4.7.5）：
 
@@ -176,7 +183,12 @@ cd miniapp && ./build_miniapp.sh glm_usage_app
 - 纯 JS JWT 与 Node `crypto` 独立计算结果逐字符一致；
 - 桌面图标注册并显示，图标 → 详情页 → 打开 → 自动查询全链路走通；
 - 过期 JWT 的错误提示正确渲染，且不影响兜底上下文继续查询；
-- 点「刷新」按钮 → 重读配置 → 重新查询（换 JWT 不用重启 App）。
+- 点「刷新」按钮 → 重读配置 → 重新查询（换 JWT 不用重启 App）；
+- **持久化实证（下午补）**：真实网页 JWT 下发后设备端完成发现，
+  org/project 双 ID 写入 `state.json`、JWT 从 `config.json` 自动清除；
+  `adb reboot` 重启后两个文件原样保留，App 冷启动**未触发任何发现请求**、
+  直接从 `state.json` 恢复两个上下文并查到真实额度（pro 套餐 5h 16% / 周 3%，
+  累计消耗 ¥16.47）—— `/userdisk` 为独立 ext4 data 分区，重启与 OTA 升级都保留。
 
 ---
 
@@ -187,5 +199,8 @@ cd miniapp && ./build_miniapp.sh glm_usage_app
 - 网页 JWT 一次性使用，发现成功即从配置清除，不会留副本。
 - 仓库里**没有任何**凭据：`config.json` / `state.json` 只在设备 `/userdisk/glm_usage/` 下，
   已确认未进版本库。
+- 存储边界：`/userdisk` 是独立 ext4 data 分区，**重启、OTA 升级都保留**
+  （已真机重启实证）；唯一会丢的情况是整片擦除式刷机（RKDevTool「擦除FLASH」），
+  那种情况下 root 和整个系统都会重来，设备上没有任何用户态存储能幸免。
 - 卸载：`adb shell miniapp_cli uninstall 8090906000000002`，
   再 `adb shell rm -rf /userdisk/glm_usage` 清掉配置与状态。
