@@ -45,6 +45,41 @@ const BASE = {
 };
 const TYPES = ['I','O','T','S','Z','J','L'];
 
+/* 颜色明暗变体（NES bevel：左上高光、右下暗影） */
+function shade(hex, pct) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const t2 = pct < 0 ? 0 : 255, q = Math.abs(pct) / 100;
+  r = Math.round((t2 - r) * q + r);
+  g = Math.round((t2 - g) * q + g);
+  b = Math.round((t2 - b) * q + b);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+/* 凸块四边 bevel：上/左亮、下/右暗 */
+function bevelStyle(st, color) {
+  st.backgroundColor = color;
+  st.borderTopWidth = '2px';    st.borderTopColor = shade(color, 55);
+  st.borderLeftWidth = '2px';   st.borderLeftColor = shade(color, 30);
+  st.borderBottomWidth = '2px'; st.borderBottomColor = shade(color, -40);
+  st.borderRightWidth = '2px';  st.borderRightColor = shade(color, -20);
+  st.borderTopStyle = 'solid'; st.borderLeftStyle = 'solid';
+  st.borderBottomStyle = 'solid'; st.borderRightStyle = 'solid';
+  return st;
+}
+
+/* 凹槽（空格）：上/左更暗、下/右微亮 —— 与凸块相反，形成凹陷 */
+function slotStyle(st) {
+  st.backgroundColor = '#10151d';
+  st.borderTopWidth = '1px';    st.borderTopColor = '#0a0e14';
+  st.borderLeftWidth = '1px';   st.borderLeftColor = '#0a0e14';
+  st.borderBottomWidth = '1px'; st.borderBottomColor = '#222b38';
+  st.borderRightWidth = '1px';  st.borderRightColor = '#222b38';
+  st.borderTopStyle = 'solid'; st.borderLeftStyle = 'solid';
+  st.borderBottomStyle = 'solid'; st.borderRightStyle = 'solid';
+  return st;
+}
+
 /* 预生成 4 个旋转态的坐标列表 */
 const SHAPES = {};
 TYPES.forEach(function (t) {
@@ -67,7 +102,10 @@ TYPES.forEach(function (t) {
     }
     m = nm;
   }
-  SHAPES[t] = { rots: rots, color: BASE[t].c };
+  SHAPES[t] = {
+    rots: rots, color: BASE[t].c,
+    hi: shade(BASE[t].c, 55), lo: shade(BASE[t].c, -40)
+  };
 });
 
 /* ---------- 棋盘组件（命令式渲染，同模块保证事件/性能） ---------- */
@@ -86,20 +124,19 @@ const MyBoard = {
       const line = [];
       for (let c = 0; c < COLS; c++) {
         const key = r + ':' + c;
-        let st;
+        let st = { width: CELL + 'px', height: CELL + 'px' };
         if (this.board[r] && this.board[r][c]) {
-          st = { backgroundColor: this.board[r][c] };                       /* 已锁定 */
+          bevelStyle(st, this.board[r][c]);                                 /* 已锁定：凸块 */
         } else if (!this.over && overlay[key]) {
-          st = { backgroundColor: shp.color };                              /* 当前方块 */
+          bevelStyle(st, shp.color);                                        /* 当前方块：凸块 */
         } else if (!this.over && ghost[key]) {
-          st = { backgroundColor: '#0d1117', borderWidth: '2px',            /* 落点阴影 */
-                 borderColor: shp.color, borderStyle: 'solid' };
+          st.backgroundColor = shade(shp.color, -72);                       /* 落点阴影：暗底+亮描边 */
+          st.borderWidth = '2px'; st.borderStyle = 'solid';
+          st.borderTopColor = shade(shp.color, 20); st.borderBottomColor = shade(shp.color, 20);
+          st.borderLeftColor = shade(shp.color, 20); st.borderRightColor = shade(shp.color, 20);
         } else {
-          st = { backgroundColor: '#141a24', borderWidth: '1px',            /* 空格点阵 */
-                 borderColor: '#1e2634', borderStyle: 'solid' };
+          slotStyle(st);                                                    /* 空格：凹槽 */
         }
-        st.width = CELL + 'px';
-        st.height = CELL + 'px';
         line.push(h('div', { style: st }));
       }
       rows.push(h('div', { style: { flexDirection: 'row' } }, line));
@@ -141,7 +178,7 @@ const MyNext = {
     }
     for (let i = 0; i < shp.rots[0].length; i++) {
       const x = shp.rots[0][i][0], y = shp.rots[0][i][1];
-      rows[y][x] = h('div', { style: { width: '10px', height: '10px', backgroundColor: shp.color } });
+      rows[y][x] = h('div', { style: bevelStyle({ width: '10px', height: '10px' }, shp.color) });
     }
     return h('div', { style: { marginTop: '4px' } }, rows);
   }
