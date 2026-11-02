@@ -181,7 +181,7 @@ node tools/glm_crypto_selftest.mjs
   &nbsp;&nbsp;
   <img src="docs/images/glm-usage-personal.png" width="240" alt="GLM 用量 · 个人机构账户视图">
   &nbsp;&nbsp;
-  <img src="docs/images/e6_glm_desktop.png" width="240" alt="桌面上的 GLM 用量图标">
+  <img src="docs/images/e6_glm_desktop.png" width="240" alt="桌面上的 GLM 用量图标（图标样式后来换过，这张是旧版）">
 </p>
 
 > 技术要点：E6 的 `http` 模块支持 HTTPS + 自定义请求头（真机实证；
