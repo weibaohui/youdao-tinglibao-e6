@@ -77,6 +77,26 @@
     </div>
   </div>
 
+  <div class="card">
+    <h2>物理按键（内核级注入，与真按键同路）</h2>
+    <div class="body">
+      <div class="row">
+        <button onclick="doKey('power')" style="border-color:#f85149">⏻ 电源</button>
+        <button onclick="doKey('power',900)" style="border-color:#f85149">⏻ 长按电源</button>
+        <button onclick="doKey('vol_up')">🔊 音量+</button>
+        <button onclick="doKey('vol_down')">🔉 音量−</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button onclick="doKey('play')">▶ 播放/暂停</button>
+        <button onclick="doKey('prev')">⏮ 上一首</button>
+        <button onclick="doKey('next')">⏭ 下一首</button>
+        <button onclick="doKey('home')">🏠 Home/录音</button>
+      </div>
+      <div class="tip">电源/音量走 <code>event1</code>/<code>event2</code>，与实体按键完全同路（EV_KEY 注入）。
+        长按电源=900ms 按住（部分场景触发关机菜单，慎点）。</div>
+    </div>
+  </div>
+
   <div class="side">
     <div class="card">
       <h2>设备状态</h2>
@@ -155,6 +175,11 @@ async function call(path){
 function doTap(){ const x=+document.getElementById('cx').value, y=+document.getElementById('cy').value; call('/tap?x='+x+'&y='+y); }
 function doLong(){ const x=+document.getElementById('cx').value, y=+document.getElementById('cy').value, ms=+document.getElementById('cms').value; call('/long?x='+x+'&y='+y+'&ms='+ms); }
 function doSwipe(){ const x1=+document.getElementById('cx').value, y1=+document.getElementById('cy').value, x2=+document.getElementById('cy').value, y2=+document.getElementById('cms').value, ms=400; call('/swipe?x1='+x1+'&y1='+y1+'&x2='+x2+'&y2='+y2+'&ms='+ms); }
+function doKey(name, ms){
+  call('/key?name=' + encodeURIComponent(name) + '&ms=' + (ms || 80)).then(d=>{
+    if (d.ok) flash.textContent = '✓ 已按下 ' + (d.label || name) + ' (' + d.ms + 'ms)';
+  });
+}
 
 function loadLogs(what){
   fetch('/logs?what=' + what + '&n=40' + q('token')).then(r=>r.text()).then(t=>{

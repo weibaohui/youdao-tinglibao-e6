@@ -2,14 +2,15 @@
  * e6_debug_server —— 有道听力宝 E6 远程调试服务
  *
  * 在设备上跑一个小 HTTP 服务，让任何能访问到它的浏览器/脚本都能：
- *   截图、点击、滑动、长按、看日志、看状态 —— 全都不用插 USB 线。
+ *   截图、点击、滑动、长按、按物理按键、看日志、看状态 —— 全都不用插 USB 线。
  *
  * 接口：
- *   GET  /                 调试控制面板（网页：看屏幕 + 点屏幕）
+ *   GET  /                 调试控制面板（网页：看屏幕 + 点屏幕 + 按物理键）
  *   GET  /shot.png         当前屏幕截图（240x320 PNG）
  *   GET  /tap?x=&y=        点击（也接受 POST）
  *   GET  /swipe?x1=&y1=&x2=&y2=&ms=
  *   GET  /long?x=&y=&ms=
+ *   GET  /key?name=&ms=    物理按键注入（power/vol_up/vol_down/play/prev/next/menu）
  *   GET  /logs?what=app|sound|err&n=50
  *   GET  /status           JSON 状态
  *   GET  /healthz          存活探测
@@ -17,9 +18,9 @@
  * 环境变量：
  *   PORT       监听端口，默认 8080
  *   E6_TOKEN   若设置，则所有接口都需要 ?token=xxx 或 X-E6-Token 头
- *   TAP_BIN    触摸注入器路径，默认 /userdisk/e6_tap
+ *   TAP_BIN    触摸/按键注入器路径，默认 /userdisk/e6_tap
  *
- * 触摸注入走 /userdisk/e6_tap（直写 /dev/input/event3）；
+ * 触摸与按键注入都走 /userdisk/e6_tap（直写 /dev/input/event1/2/3）；
  * 截图走 miniapp_cli capture（官方 DRM/KMS 路径）。
  */
 package main
@@ -198,6 +199,45 @@ func handleLong(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "action": "long", "x": x, "y": y, "ms": ms})
 }
 
+// 物理按键名 → 面板/接口展示用说明（keycode 见 e6_tap/main.go 的 namedKeys）
+// 实测 2026-11-02：用户口中的「Home/录音键」就是 DTS key-toggle = KEY_MENU(139)
+var keyNames = map[string]string{
+	"power":    "电源",
+	"vol_up":   "音量+",
+	"vol_down": "音量−",
+	"play":     "播放/暂停",
+	"prev":     "上一首",
+	"next":     "下一首",
+	"home":     "Home/录音",
+	"menu":     "菜单(=Home)",
+}
+
+func handleKey(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	ms := numParam(r, "ms", 80)
+	display, known := keyNames[name]
+	if !known {
+		names := make([]string, 0, len(keyNames))
+		for k := range keyNames {
+			names = append(names, k)
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "未知按键: " + name + "（可用: " + strings.Join(names, " ") + "）",
+		})
+		return
+	}
+	if ms <= 0 || ms > 10000 {
+		ms = 80
+	}
+	if err := touch("key", name, strconv.Itoa(ms)); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "action": "key", "key": name, "label": display, "ms": ms,
+	})
+}
+
 func handleLogs(w http.ResponseWriter, r *http.Request) {
 	what := r.URL.Query().Get("what")
 	n := numParam(r, "n", 50)
@@ -261,6 +301,7 @@ func main() {
 	mux.HandleFunc("/tap", handleTap)
 	mux.HandleFunc("/swipe", handleSwipe)
 	mux.HandleFunc("/long", handleLong)
+	mux.HandleFunc("/key", handleKey)
 	mux.HandleFunc("/logs", handleLogs)
 	mux.HandleFunc("/status", handleStatus)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
