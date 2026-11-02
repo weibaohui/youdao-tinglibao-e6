@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>永久 Root 提权 · 绕过签名校验 · Linux DRM 60FPS 双缓冲图形开发 · 原生桌面图标集成</b>
+  <b>永久 Root 提权 · 永久免密 ADB + SSH · HTTP 远程调试 · 触摸注入 · Falcon 轻应用开发</b>
 </p>
 
 ---
@@ -18,7 +18,10 @@
 1. **逆向分析与永久 Root 提权**：在 U-Boot 严格校验 Kernel RSA-2048 签名的情况下，通过 `rootfs_a` EROFS 镜像热补丁成功绕过 ADB 密码鉴权，取得永久最高 `root` 权限；
 2. **Linux DRM/KMS 60FPS 原生图形开发**：无需 X11 / Wayland，基于 Linux 原生 DRM Dumb Buffer 与硬件换页（CRTC Flip），实现了 **真正无撕裂、无闪烁的 60FPS 平滑图形界面**；
 3. **电容触摸屏防误触独占方案**：使用 Linux 内核 `EVIOCGRAB` 机制独占接管触摸屏，杜绝了返回桌面时的幽灵点击现象；
-4. **原生桌面图标无缝集成**：无需替换或破坏原厂任何内置功能（如网易云音乐），通过轻应用包热注册在系统桌面上生成独立图标入口，点击即可唤醒自定义原生程序。
+4. **原生桌面图标无缝集成**：无需替换或破坏原厂任何内置功能（如网易云音乐），通过轻应用包热注册在系统桌面上生成独立图标入口，点击即可唤醒自定义原生程序；
+5. **永久免密 ADB + SSH**：借助固件自带的开机钩子（`S99_run_test_scripts` → `/userdisk/skip_re/skip_login.sh`）与 `mount --bind` 覆盖只读 rootfs 的鉴权脚本，**重启后 16 秒内自动恢复 SSH + 无线 ADB**，全程零口令、不用再碰屏幕上的调试开关；
+6. **触摸注入与 HTTP 远程调试**：自研 ARM 注入器直写 `/dev/input/event3`（设备没有 `input`/`sendevent`），配套 HTTP 服务提供 **截图 / 点击 / 滑动 / 日志** 接口，并内置一个"点屏幕即注入触摸"的网页调试面板；
+7. **Falcon 轻应用（MiniApp）开发**：破解官方字节码得出真实入口契约，跑通界面渲染 / HTTP 联网 / 文件读写 / 声音播放四大能力。
 
 ---
 
@@ -32,6 +35,39 @@
 | **屏幕规格** | 240 × 320 DPI RGB LCD | 驱动节点 `/dev/dri/card0` (Connector ID: 70, CRTC ID: 66) |
 | **触摸芯片** | hyn_ts 电容触控 | 输入事件节点 `/dev/input/event3` |
 | **调试接口** | USB-C ADB & Wi-Fi 无线调试 | 端口 5555 |
+| **设备自带服务** | OpenSSH 8.8p1 / dropbear 2022.82 | 可直接开 SSH，无需编译 |
+
+---
+
+## 🔌 现在这台设备有 4 条可用通道
+
+装完 [`tools/e6_ssh_setup.sh`](tools/e6_ssh_setup.sh) 后，**拔掉 USB 线、重启都照样能用**：
+
+| 通道 | 端口 | 用途 | 状态 |
+| :--- | :--- | :--- | :--- |
+| **SSH** | 22 | root shell、装包、看系统 | 公钥登录，零口令 |
+| **无线 ADB** | 5555 | 装 MiniApp、推文件、截图、脚本化 | 零口令 root |
+| **HTTP 调试** | 8080 | 截图、点击、滑动、日志 + 网页面板 | 浏览器直接开 |
+| 有道自带 WS | 9307 | —— | stub（任何 JSON 都回空），死路 |
+
+四条通道**互不依赖**，每条都有看门狗兜底（掉了 30 秒内自动补）：
+
+```bash
+# SSH（自动按 MAC 找当前 IP，IP 变了也不用改配置）
+~/bin/e6 'id'
+
+# 无线 ADB
+adb connect 192.168.0.201:5555
+
+# HTTP 调试
+curl http://192.168.0.201:8080/shot.png -o s.png
+```
+
+**为什么以前这么难搞**：有道固件把 USB 调试做成了「每次开机都要手动开」的开关
+（设置 → 法律监管 → 连击文本 5 次），换 WiFi 后 `adb tcpip 5555` 也会失效；
+而且本机 inittab 里**只有 `::respawn:-/bin/login`、没有 adbd 的 respawn**，
+所以那条命令会让 adbd 自杀后没人再拉它，**USB 和 5555 会同时消失**，只能物理救回。
+本项目用「固件自带开机钩子 + `mount --bind` 覆盖只读 rootfs 的鉴权脚本」把它彻底解决了。
 
 ---
 
@@ -141,6 +177,14 @@ cd miniapp && ./build_miniapp.sh
 触摸坐标与 240×320 逻辑坐标 **1:1 对应**（无旋转无偏移），
 所以**在截图上量到的像素坐标可以直接拿去点击**。
 
+> 想在浏览器里直接点屏幕，用 [`docs/REMOTE_DEBUG.md`](docs/REMOTE_DEBUG.md) 里的
+> **HTTP 调试面板**（8080 端口），或者：
+
+```bash
+# 或者走 HTTP 接口（不用 SSH / ADB）
+curl "http://192.168.0.201:8080/tap?x=177&y=295"
+```
+
 > **完整指南见 [`docs/SCREENSHOT_AND_INPUT.md`](docs/SCREENSHOT_AND_INPUT.md)** ——
 > 含坐标系统实测依据、内核事件流抓包证据、"同坐标连点事件流里没有 X/Y" 的成因、
 > 以及黑屏判别（318 字节纯黑 PNG）等全部踩坑记录。
@@ -194,14 +238,48 @@ curl http://192.168.0.201:8080/shot.png -o shot.png
 curl "http://192.168.0.201:8080/tap?x=177&y=295"
 ```
 
+<p align="center">
+  <img src="docs/images/e6_remote_home.png" width="240" alt="通过 HTTP 接口抓到的 E6 实时屏幕">
+</p>
+
+> 上图是通过 `GET /shot.png` 实时抓到的设备屏幕（18969 字节，正常渲染）。
+> 顺带记住一个判据：**PNG 恰好 318 字节 = 纯黑 = app 没渲染**，不是抓屏失败。
+
 服务由开机钩子拉起、看门狗守护，重启后自动恢复。
 
 > **完整文档见 [`docs/REMOTE_DEBUG.md`](docs/REMOTE_DEBUG.md)** ——
 > 含接口清单、实现要点、可选 token 鉴权、以及三条通道（HTTP / SSH / ADB）怎么选。
+> ⚠️ 这个服务能注入任意触摸，等于**完整的远程输入控制** —— 公网或公共 WiFi 下务必开 token。
 
 ---
 
 ## 🚀 快速上手
+
+### 0. 一键装好远程访问（推荐先做这个）
+
+```bash
+git clone https://github.com/weibaohui/youdao-tinglibao-e6.git
+cd youdao-tinglibao-e6
+./tools/e6_ssh_setup.sh
+```
+
+这一步会：
+
+- 生成/复用 SSH 密钥，把公钥写进设备；
+- 部署免密 ADB 鉴权脚本、sshd 配置、adbd 启动脚本、看门狗、开机钩子；
+- 编译并部署 HTTP 调试服务与触摸注入器；
+- **立即生效**，且重启后自动恢复。
+
+装完就能用：
+
+```bash
+ssh -i ~/.ssh/e6_ed25519 root@192.168.0.201   # SSH
+adb connect 192.168.0.201:5555                # 无线 ADB
+open http://192.168.0.201:8080/               # 调试面板
+```
+
+> 需要设备已经能通过 ADB 拿到 root shell（见 [`docs/ROOT_GUIDE.md`](docs/ROOT_GUIDE.md)）。
+> 如果设备还没 root，先插 USB 走一次提权流程。
 
 ### 1. 编译全套原生组件 (使用 Go 交叉编译)
 
@@ -214,15 +292,24 @@ bash tools/build_all.sh
 
 编译产物会自动生成在各源码目录下（均为纯静态 ARMv7 二进制）。
 
-### 2. 通过无线 Wi-Fi 连接听力宝
+### 2. 连接听力宝
 
-确保听力宝与电脑处于同一局域网（例如手机热点或家庭路由器）：
+设备与电脑在同一局域网即可。**推荐用自动解析**（USB 优先，否则按 MAC 找当前 IP）：
 
 ```bash
-bash tools/connect_wifi.sh 192.168.0.109
+source tools/e6_device.sh
+D="$(e6_resolve_device)"          # → 192.168.0.201:5555 或 LE62200008802358
+adb connect "$D"
 ```
 
-连接成功后，运行 `adb shell` 即可直接进入无密码的最高 `root` 终端！
+或者直接用无线连接脚本（连不上时它会打印可执行的排查步骤）：
+
+```bash
+bash tools/connect_wifi.sh
+```
+
+> E6 的 IP 会随 DHCP 变化（实测 `192.168.0.109` → `192.168.0.201`），
+> WiFi MAC `64:82:14:fb:c1:13` 才是恒定的。脚本按 MAC 跟随，不用改配置。
 
 ### 3. 一键推送并运行 60FPS 屏幕演示
 
@@ -244,6 +331,14 @@ cd miniapp && ./build_miniapp.sh
 装完在桌面就能看到「E6 能力秀」图标，点开是一个实时自测页：
 界面渲染、HTTP 联网、文件写入、声音播放四项能力逐项显示结果。
 
+### 5. 调试界面：截图 + 点击
+
+```bash
+./tools/e6_ui.sh shot out.png          # 截图
+./tools/e6_ui.sh tap   177 295         # 点击
+./tools/e6_ui.sh verify a.png b.png    # A/B 判定：画面变了没有
+```
+
 ---
 
 ## 💡 核心图形技术与突破点
@@ -263,7 +358,13 @@ cd miniapp && ./build_miniapp.sh
 
 1. 本项目仅供嵌入式 Linux 技术学习与个人折腾研究，请勿用于非法用途；
 2. 听力宝的 `boot_a` 分区受 RSA-2048 严格签名保护，**千万不要直接烧写修改过的 boot 镜像**，否则将导致签名失效变砖；
-3. 进行任何底层写块操作前，强烈建议使用 `dd` 对设备完整分区进行离线备份。
+3. 进行任何底层写块操作前，强烈建议使用 `dd` 对设备完整分区进行离线备份；
+4. **本仓库的「永久免密 ADB + SSH」方案不触碰任何分区写入**：只用到固件自带的
+   `/userdisk`（可写 ext4）和运行时的 `mount --bind` 覆盖，覆盖是**进程级、可逆的**，
+   一条 `umount /usr/bin/adbd_auth.sh` 就能还原；
+5. 免密 ADB + 公钥 SSH + 可注入触摸的 HTTP 服务等于**把设备完全交出去了**。
+   设备一旦接入公共网络，务必：给 HTTP 服务设 `E6_TOKEN`、限制 SSH 来源、
+   并把设备的 WiFi 密码改掉。
 
 ---
 
