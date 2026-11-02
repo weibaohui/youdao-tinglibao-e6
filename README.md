@@ -44,7 +44,8 @@ youdao-tinglibao-e6/
 │   ├── HARDWARE.md         # 硬件架构、引脚定义与 eMMC 分区表
 │   ├── ROOT_GUIDE.md       # Root 提权与 EROFS 哈希热补丁全教程
 │   ├── MINIAPP_DEV.md      # Falcon 轻应用开发完全指南（入口契约/四大能力）
-│   └── SCREENSHOT_AND_INPUT.md  # 真机截图与触摸注入（点击界面）完全指南
+│   ├── SCREENSHOT_AND_INPUT.md  # 真机截图与触摸注入（点击界面）完全指南
+│   └── PERSISTENT_ACCESS.md     # 永久免密 ADB + SSH（重启后自动恢复）
 ├── miniapp/                # Falcon 轻应用（.amr）开发套件
 │   ├── build_miniapp.sh    # 一键构建 → 部署 → 启动 → 抓屏取证
 │   ├── e6_demo_app/        # 四合一能力演示应用（界面/联网/文件/声音）
@@ -63,6 +64,10 @@ youdao-tinglibao-e6/
     ├── push_and_run.sh     # 一键推送 ARM 二进制到设备运行
     ├── e6_device.sh        # 自动解析 ADB 目标（USB 优先，否则按 MAC 找 IP）
     ├── e6_ui.sh            # 界面自动化：截图/点击/滑动/长按/日志/diff
+    ├── e6_ssh_setup.sh     # 一键装好「永久免密 ADB + SSH」
+    ├── e6_device_scripts/  # 部署到设备上的脚本（鉴权/sshd/adbd/开机钩子）
+    ├── adb_root.sh         # 以 root 执行命令（自动完成 adbd 认证）
+    ├── usb_to_wifi.sh      # 插 USB 后一键切到无线 ADB
     └── pngdiff.py          # 像素级 A/B diff（判定操作是否真的生效）
 ```
 
@@ -137,6 +142,40 @@ cd miniapp && ./build_miniapp.sh
 > **完整指南见 [`docs/SCREENSHOT_AND_INPUT.md`](docs/SCREENSHOT_AND_INPUT.md)** ——
 > 含坐标系统实测依据、内核事件流抓包证据、"同坐标连点事件流里没有 X/Y" 的成因、
 > 以及黑屏判别（318 字节纯黑 PNG）等全部踩坑记录。
+
+---
+
+## 🔐 永久免密 ADB + SSH
+
+有道固件把 USB 调试做成了**每次开机都要手动开**的开关（设置 → 法律监管 → 连击文本 5 次），
+换 WiFi 后 `adb tcpip 5555` 也会失效。这个项目把它彻底解决了：
+
+```bash
+./tools/e6_ssh_setup.sh          # 一键安装
+```
+
+之后**重启也会自动恢复** —— 实测设备重启后 **16 秒** SSH(22) 与 ADB(5555) 一起就位：
+
+```bash
+ssh -i ~/.ssh/e6_ed25519 root@192.168.0.201     # SSH 公钥登录
+adb connect 192.168.0.201:5555                  # 无线 ADB，零口令
+```
+
+原理（都不需要重刷固件、不碰 boot 分区的 RSA 签名）：
+
+- 固件的 `/etc/init.d/S99_run_test_scripts` 会执行 `/userdisk/skip_re/skip_login.sh`
+  —— 这就是**开机自启的落点**（`/userdisk` 是 ext4 持久分区）；
+- rootfs 是 EROFS 只读，但 `mount --bind` 可以运行时覆盖 `/usr/bin/adbd_auth.sh`
+  —— 换成恒成功版本，**ADB 永久免密**；
+- adbd 由厂商的 `/etc/profile.d/adbd_tcp_port.sh` 固定 `ADB_TCP_PORT=5555`，
+  由钩子按正确环境变量直接拉起（**不能用 `adb tcpip`** —— 本机 inittab 没有 adbd 的 respawn，
+  那样会让设备彻底失联）；
+- 设备自带 OpenSSH 8.8p1 和 dropbear 2022.82，主机密钥也现成，
+  把 `AuthorizedKeysFile` 指到可写分区即可用公钥登录。
+
+> **完整指南见 [`docs/PERSISTENT_ACCESS.md`](docs/PERSISTENT_ACCESS.md)** ——
+> 含 bind-mount 原理、开机钩子源码、重启验证记录、卸载方法，
+> 以及这台机器上 8 个会让脚本静默出错的怪癖（退出码不透传、stdin 转发挂死、没有 pgrep ……）。
 
 ---
 

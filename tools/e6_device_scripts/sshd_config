@@ -1,0 +1,30 @@
+# 有道听力宝 E6 —— 自定义 sshd 配置
+#
+# 放在可写分区 /userdisk/ssh，不改只读 rootfs。
+# 主机密钥复用系统自带的 /etc/ssh/ssh_host_*（设备出厂就有）。
+#
+# 注意：本机 sshd 是精简编译版，**不支持 UsePAM / PrintLastLog**，
+#      写进去会报 "Unsupported option"（不影响启动，但别加）。
+
+Port 22
+ListenAddress 0.0.0.0
+
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+
+PidFile /run/sshd.pid
+
+# 授权公钥放在可写分区，绕开只读的 /root
+AuthorizedKeysFile /userdisk/ssh/authorized_keys
+
+PermitRootLogin prohibit-password
+PubkeyAuthentication yes
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+PermitEmptyPasswords no
+StrictModes no
+
+X11Forwarding no
+PrintMotd no
+AcceptEnv LANG LC_*
+LogLevel INFO
