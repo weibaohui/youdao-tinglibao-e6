@@ -97,6 +97,23 @@
     </div>
   </div>
 
+  <div class="card">
+    <h2>手势（四向滑动预设）</h2>
+    <div class="body">
+      <div class="row">
+        <button onclick="doGesture('up')">⬆️ 上滑</button>
+        <button onclick="doGesture('down')">⬇️ 下滑</button>
+        <button onclick="doGesture('left')">⬅️ 左滑</button>
+        <button onclick="doGesture('right')">➡️ 右滑</button>
+        <label>距离</label><input id="gdist" value="170">
+        <label>ms</label><input id="gms" value="300">
+      </div>
+      <div class="tip">单指滑动预设：上/下滑在屏幕竖向中线（x=120），左/右滑在横向中线（y=160）。
+        距离为滑动起点到终点的像素行程（起点按方向自动内缩，不会出屏）。
+        触屏是单点（无多点），捏合/双指手势硬件上做不到。自定义路径用上面的 X/Y + 滑动按钮。</div>
+    </div>
+  </div>
+
   <div class="side">
     <div class="card">
       <h2>设备状态</h2>
@@ -179,6 +196,20 @@ function doKey(name, ms){
   call('/key?name=' + encodeURIComponent(name) + '&ms=' + (ms || 80)).then(d=>{
     if (d.ok) flash.textContent = '✓ 已按下 ' + (d.label || name) + ' (' + d.ms + 'ms)';
   });
+}
+function doGesture(dir){
+  const W = 240, H = 320;
+  const dist = Math.max(20, Math.min(300, +document.getElementById('gdist').value || 170));
+  const ms   = Math.max(60, Math.min(3000, +document.getElementById('gms').value || 300));
+  let x1, y1, x2, y2;
+  if (dir === 'up')   { x1 = W/2; y1 = H*0.75; x2 = W/2; y2 = H*0.75 - dist; }
+  if (dir === 'down') { x1 = W/2; y1 = H*0.25; x2 = W/2; y2 = H*0.25 + dist; }
+  if (dir === 'left') { x1 = W*0.78; y1 = H/2; x2 = W*0.78 - dist; y2 = H/2; }
+  if (dir === 'right'){ x1 = W*0.22; y1 = H/2; x2 = W*0.22 + dist; y2 = H/2; }
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+  x1 = clamp(x1, 0, W-1); x2 = clamp(x2, 0, W-1);
+  y1 = clamp(y1, 0, H-1); y2 = clamp(y2, 0, H-1);
+  call('/swipe?x1='+x1+'&y1='+y1+'&x2='+x2+'&y2='+y2+'&ms='+ms);
 }
 
 function loadLogs(what){
