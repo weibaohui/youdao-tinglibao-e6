@@ -19,10 +19,15 @@
 E6_USB_SERIAL="${E6_USB_SERIAL:-LE62200008802358}"
 E6_MAC="${E6_MAC:-64:82:14:fb:c1:13}"
 
-# 从 arp 表里按 MAC 找 IP
-e6_arp_lookup() {
+# 从 arp 表里按 MAC 找 IP（可能不止一个：设备可能同时持有 STA 与热点两个地址）
+e6_arp_ips() {
   arp -a 2>/dev/null | awk -v mac="$E6_MAC" '
-    tolower($4) == mac { gsub(/[()]/, "", $2); print $2; exit }'
+    tolower($4) == mac { gsub(/[()]/, "", $2); print $2 }' | sort -u
+}
+
+# 从 arp 表里按 MAC 找 IP（单个）
+e6_arp_lookup() {
+  e6_arp_ips | head -1
 }
 
 # ping 扫本机所在网段，把 ARP 表填满（ARP 不会自动发现邻居）
@@ -56,12 +61,23 @@ e6_resolve_device() {
   if adb devices 2>/dev/null | grep -q "^${E6_USB_SERIAL}[[:space:]]"; then
     echo "$E6_USB_SERIAL"; return 0
   fi
-  local ip
-  if ip="$(e6_resolve_ip)"; then
-    echo "${ip}:5555"; return 0
-  fi
-  echo ""
-  return 1
+  local ips ip first=""
+  ips="$(e6_arp_ips)"
+  [ -z "$ips" ] && { e6_warm_arp; ips="$(e6_arp_ips)"; }
+  [ -z "$ips" ] && { echo ""; return 1; }
+  # 设备可能同时持有多个 IP（STA + 自身热点），优先选 5555 开着的那���
+  while read -r ip; do
+    [ -z "$ip" ] && continue
+    [ -z "$first" ] && first="$ip"
+    if nc -z -G 1 "$ip" 5555 >/dev/null 2>&1; then
+      echo "${ip}:5555"; return 0
+    fi
+  done <<EOF
+$ips
+EOF
+  # 都没开 5555，返回第一个（连不上时脚本会给出提示）
+  echo "${first}:5555"
+  return 0
 }
 
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
