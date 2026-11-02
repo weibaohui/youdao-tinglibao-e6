@@ -2,16 +2,17 @@
   <div class="page">
     <div class="header">
       <text :style="{color:'#ffffff',fontSize:'13px',fontWeight:'bold'}">俄罗斯方块</text>
-      <text :style="{color:'#8b949e',fontSize:'11px'}">分数: {{ score }}  行: {{ lines }}</text>
+      <text :style="{color:'#8b949e',fontSize:'11px'}">分 {{ score }} · 最高 {{ high }} · 行 {{ lines }}</text>
     </div>
 
     <div class="main">
-      <my-board :board="board" :cur="cur" :over="over"></my-board>
+      <my-board :board="board" :cur="cur" :ghost="ghostMap" :over="over"></my-board>
 
       <div class="panel">
         <text :style="{color:'#8b949e',fontSize:'10px'}">下一个</text>
         <my-next :type="nextType"></my-next>
-        <text :style="{color:'#58a6ff',fontSize:'9px',marginTop:'8px'}">上一首←</text>
+        <text :style="{color:'#e3b341',fontSize:'11px',marginTop:'6px'}">最高 {{ high }}</text>
+        <text :style="{color:'#58a6ff',fontSize:'9px',marginTop:'6px'}">上一首←</text>
         <text :style="{color:'#58a6ff',fontSize:'9px'}">下一首→</text>
         <text :style="{color:'#58a6ff',fontSize:'9px'}">Home=转</text>
         <text :style="{color:'#58a6ff',fontSize:'9px'}">播放=落</text>
@@ -71,40 +72,53 @@ TYPES.forEach(function (t) {
 
 /* ---------- 棋盘组件（命令式渲染，同模块保证事件/性能） ---------- */
 const MyBoard = {
-  props: { board: Array, cur: Object, over: Boolean },
+  props: { board: Array, cur: Object, ghost: Object, over: Boolean },
   render(h) {
     const shp = SHAPES[this.cur.t];
     const cells = shp.rots[this.cur.r];
     const overlay = {};
     for (let i = 0; i < cells.length; i++) {
-      const cx = this.cur.x + cells[i][0];
-      const cy = this.cur.y + cells[i][1];
-      overlay[cy + ':' + cx] = true;
+      overlay[(this.cur.y + cells[i][1]) + ':' + (this.cur.x + cells[i][0])] = true;
     }
+    const ghost = this.ghost || {};
     const rows = [];
     for (let r = 0; r < ROWS; r++) {
       const line = [];
       for (let c = 0; c < COLS; c++) {
-        let color = '#1a2030';
-        if (this.board[r] && this.board[r][c]) color = this.board[r][c];
-        if (!this.over && overlay[r + ':' + c]) color = shp.color;
-        line.push(h('div', { style: { width: CELL + 'px', height: CELL + 'px', backgroundColor: color } }));
+        const key = r + ':' + c;
+        let st;
+        if (this.board[r] && this.board[r][c]) {
+          st = { backgroundColor: this.board[r][c] };                       /* 已锁定 */
+        } else if (!this.over && overlay[key]) {
+          st = { backgroundColor: shp.color };                              /* 当前方块 */
+        } else if (!this.over && ghost[key]) {
+          st = { backgroundColor: '#0d1117', borderWidth: '2px',            /* 落点阴影 */
+                 borderColor: shp.color, borderStyle: 'solid' };
+        } else {
+          st = { backgroundColor: '#141a24', borderWidth: '1px',            /* 空格点阵 */
+                 borderColor: '#1e2634', borderStyle: 'solid' };
+        }
+        st.width = CELL + 'px';
+        st.height = CELL + 'px';
+        line.push(h('div', { style: st }));
       }
       rows.push(h('div', { style: { flexDirection: 'row' } }, line));
     }
+    const boardKids = [h('div', { style: { flexDirection: 'column' } }, rows)];
     if (this.over) {
-      rows.push(h('div', { style: {
-        position: 'absolute', top: '70px', left: '0px', width: '130px',
-        justifyContent: 'center', alignItems: 'center'
+      boardKids.push(h('div', { style: {
+        position: 'absolute', top: '80px', left: '0px', width: (COLS * CELL) + 'px',
+        justifyContent: 'center', alignItems: 'center', backgroundColor: '#0d1117'
       } }, [
         h('text', { style: { color: '#f85149', fontSize: '14px', fontWeight: 'bold' } }, '游戏结束'),
-        h('text', { style: { color: '#8b949e', fontSize: '10px', marginTop: '4px' } }, '点左下「重开」')
+        h('text', { style: { color: '#8b949e', fontSize: '10px', marginTop: '4px' } }, '按任意操作键重开')
       ]));
     }
     return h('div', { style: {
-      width: (COLS * CELL) + 'px', height: (ROWS * CELL) + 'px',
-      backgroundColor: '#11151c', borderRadius: '4px'
-    } }, rows);
+      width: (COLS * CELL + 4) + 'px', height: (ROWS * CELL + 4) + 'px',
+      borderWidth: '2px', borderColor: '#3d4451', borderStyle: 'solid',
+      backgroundColor: '#0d1117'
+    } }, boardKids);
   }
 };
 
@@ -116,7 +130,13 @@ const MyNext = {
     const rows = [];
     for (let r = 0; r < 4; r++) {
       const line = [];
-      for (let c = 0; c < 4; c++) line.push(h('div', { style: { width: '10px', height: '10px' } }));
+      for (let c = 0; c < 4; c++) {
+        line.push(h('div', { style: {
+          width: '10px', height: '10px',
+          backgroundColor: '#141a24', borderWidth: '1px',
+          borderColor: '#1e2634', borderStyle: 'solid'
+        } }));
+      }
       rows.push(h('div', { style: { flexDirection: 'row' } }, line));
     }
     for (let i = 0; i < shp.rots[0].length; i++) {
@@ -161,6 +181,7 @@ export default {
 
   data() {
     return {
+      ghostMap: {},
       board: emptyBoard(),
       cur: { t: 'I', r: 0, x: 3, y: 0 },
       nextType: 'T',
@@ -172,6 +193,9 @@ export default {
   },
 
   created() {
+    const hs = new UI.Storage('tetris_high');
+    const self = this;
+    hs.get('high', 0).then(function (v) { if (v > 0) self.high = v; });
     try {
       /* E6 导出为小写 buttonEvent（S7 Pro 文档写的是 ButtonEvent），
          且实例没有 .on() —— 事件以 JQSignal 属性暴露，回调 = 直接给属性赋函数 */
@@ -195,6 +219,7 @@ export default {
     this.spawn();
     this.nextType = this.randType();
     this.spawn();
+    this.computeGhost();
     this.loop();
   },
 
@@ -220,6 +245,22 @@ export default {
       return false;
     },
 
+    computeGhost() {
+      let gy = this.cur.y;
+      while (!this.collides(this.cur.t, this.cur.r, this.cur.x, gy + 1)) gy++;
+      const cells = SHAPES[this.cur.t].rots[this.cur.r];
+      const overlay = {};
+      for (let i = 0; i < cells.length; i++) {
+        overlay[(this.cur.y + cells[i][1]) + ':' + (this.cur.x + cells[i][0])] = true;
+      }
+      const g = {};
+      for (let i = 0; i < cells.length; i++) {
+        const k = (gy + cells[i][1]) + ':' + (this.cur.x + cells[i][0]);
+        if (!overlay[k]) g[k] = true;
+      }
+      this.ghostMap = g;
+    },
+
     spawn() {
       if (!this._bag || !this._bag.length) {
         this._bag = TYPES.slice();
@@ -235,6 +276,7 @@ export default {
         this.over = true;
         if (this._timer) clearTimeout(this._timer);
       }
+      this.computeGhost();
     },
 
     merge() {
@@ -265,6 +307,11 @@ export default {
         this.lines += cleared;
       }
       this.board = b;
+      if (this.score > this.high) {
+        this.high = this.score;
+        const hs = new UI.Storage('tetris_high');
+        hs.set('high', this.high);
+      }
     },
 
     reset() {
@@ -282,6 +329,7 @@ export default {
       if (this.over) { this.reset(); return; }
       if (!this.collides(this.cur.t, this.cur.r, this.cur.x + dir, this.cur.y)) {
         this.cur = { t: this.cur.t, r: this.cur.r, x: this.cur.x + dir, y: this.cur.y };
+        this.computeGhost();
       }
     },
 
@@ -292,6 +340,7 @@ export default {
       for (let i = 0; i < kicks.length; i++) {
         if (!this.collides(this.cur.t, nr, this.cur.x + kicks[i], this.cur.y)) {
           this.cur = { t: this.cur.t, r: nr, x: this.cur.x + kicks[i], y: this.cur.y };
+          this.computeGhost();
           return;
         }
       }
@@ -300,10 +349,12 @@ export default {
     stepDown() {
       if (!this.collides(this.cur.t, this.cur.r, this.cur.x, this.cur.y + 1)) {
         this.cur = { t: this.cur.t, r: this.cur.r, x: this.cur.x, y: this.cur.y + 1 };
+        this.computeGhost();
         return false;
       }
       this.merge();
       this.spawn();
+      this.computeGhost();
       return true;
     },
 
@@ -314,7 +365,13 @@ export default {
         this.cur = { t: this.cur.t, r: this.cur.r, x: this.cur.x, y: this.cur.y + 1 };
         n++;
       }
+      this.computeGhost();
       this.score += n * 2;
+      if (this.score > this.high) {
+        this.high = this.score;
+        const hs = new UI.Storage('tetris_high');
+        hs.set('high', this.high);
+      }
       this.merge();
       this.spawn();
     },
