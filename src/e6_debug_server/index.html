@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E6 远程调试</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; --ok:#7ee787; --warn:#ffa657; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;
+         background:var(--bg); color:var(--fg); font-size:13px; }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; background:#1f2a44; border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; color:#fff; }
+  header .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 8px var(--ok); }
+  header .meta { color:#7d90c0; font-size:11px; }
+  header .sp { margin-left:auto; }
+  main { display:flex; flex-wrap:wrap; gap:16px; padding:16px; align-items:flex-start; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; }
+  .card h2 { font-size:12px; margin:0; padding:9px 12px; color:var(--dim); border-bottom:1px solid var(--line); font-weight:600; }
+  .card .body { padding:12px; }
+  /* 屏幕 */
+  #screenWrap { position:relative; width:240px; height:320px; background:#000; border-radius:6px; overflow:hidden;
+                border:1px solid #30363d; cursor:crosshair; }
+  #screen { width:240px; height:320px; display:block; image-rendering:pixelated; }
+  #screenWrap .hint { position:absolute; left:0; right:0; bottom:0; padding:3px 6px; background:rgba(0,0,0,.6);
+                      color:#fff; font-size:10px; text-align:center; opacity:0; transition:opacity .15s; pointer-events:none; }
+  #screenWrap:hover .hint { opacity:1; }
+  #cross { position:absolute; width:22px; height:22px; margin:-11px 0 0 -11px; border:2px solid var(--warn);
+           border-radius:50%; pointer-events:none; display:none; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button { background:#21262d; color:var(--fg); border:1px solid var(--line); border-radius:6px;
+           padding:6px 11px; cursor:pointer; font-size:12px; font-family:inherit; }
+  button:hover { background:#30363d; border-color:var(--accent); color:#fff; }
+  button.primary { background:#2f6feb; border-color:#2f6feb; color:#fff; }
+  input { background:#0d1117; border:1px solid var(--line); color:var(--fg); border-radius:5px; padding:5px 7px; width:62px;
+          font-family:inherit; font-size:12px; }
+  label { color:var(--dim); font-size:11px; }
+  pre { background:#0d1117; border:1px solid var(--line); border-radius:6px; padding:10px; margin:0;
+        color:#a5f3fc; font-size:11px; line-height:1.5; overflow:auto; max-height:280px; white-space:pre-wrap; word-break:break-all; }
+  .side { flex:1; min-width:320px; display:flex; flex-direction:column; gap:16px; }
+  .grid { display:grid; grid-template-columns:auto auto auto auto; gap:6px; align-items:center; }
+  .status { font-size:11px; color:var(--dim); }
+  .status b { color:var(--fg); font-weight:600; }
+  #flash { color:var(--ok); font-size:11px; min-height:16px; }
+  .tip { color:var(--dim); font-size:11px; margin-top:8px; line-height:1.6; }
+  code { background:#0d1117; padding:1px 5px; border-radius:3px; color:var(--warn); font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>E6 远程调试</h1>
+  <span class="meta" id="hdrMeta">连接中…</span>
+  <span class="sp"></span>
+  <button class="primary" onclick="refresh()">刷新屏幕</button>
+  <label><input type="checkbox" id="auto" checked> 自动刷新</label>
+</header>
+
+<main>
+  <div class="card">
+    <h2>屏幕（点击即可注入触摸）</h2>
+    <div class="body">
+      <div id="screenWrap">
+        <img id="screen" alt="E6 屏幕">
+        <div id="cross"></div>
+        <div class="hint">点击此处 = 向设备注入一次点击</div>
+      </div>
+      <div class="grid" style="margin-top:10px">
+        <label>X</label><input id="cx" value="120">
+        <label>Y</label><input id="cy" value="200">
+        <button onclick="doTap()">点击</button>
+        <button onclick="doLong()">长按</button>
+        <button onclick="doSwipe()">滑动</button>
+        <label>ms</label><input id="cms" value="400">
+      </div>
+      <div id="flash"></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h2>设备状态</h2>
+      <div class="body"><div class="status" id="status">读取中…</div></div>
+    </div>
+    <div class="card">
+      <h2>应用日志
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button onclick="loadLogs('app')">app</button>
+          <button onclick="loadLogs('sound')">sound</button>
+          <button onclick="loadLogs('err')">error</button>
+        </span>
+      </h2>
+      <div class="body"><pre id="logs">（点上面的按钮加载日志）</pre></div>
+    </div>
+    <div class="card">
+      <h2>用法</h2>
+      <div class="body tip">
+        <b>直接点左边的屏幕</b>就能给设备注入一次点击（坐标自动换算）。<br>
+        命令行：<br>
+        <code>curl http://&lt;ip&gt;:8080/shot.png -o s.png</code><br>
+        <code>curl "http://&lt;ip&gt;:8080/tap?x=120&amp;y=200"</code><br>
+        <code>curl "http://&lt;ip&gt;:8080/swipe?x1=200&amp;y1=60&amp;x2=40&amp;y2=240&amp;ms=400"</code><br>
+        <code>curl "http://&lt;ip&gt;:8080/logs?what=app&amp;n=30"</code><br>
+        屏幕分辨率 <b>240×320</b>，触摸坐标与像素一一对应。
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const W = 240, H = 320;
+const img = document.getElementById('screen');
+const wrap = document.getElementById('screenWrap');
+const cross = document.getElementById('cross');
+const flash = document.getElementById('flash');
+let timer = null;
+
+function q(k){ const v = new URLSearchParams(location.search).get(k); return v ? '&token='+encodeURIComponent(v) : ''; }
+function tok(){ const v = new URLSearchParams(location.search).get('token'); return v ? v : ''; }
+
+function refresh(){
+  img.src = '/shot.png?t=' + Date.now() + q('token');
+}
+function schedule(){
+  if (timer) clearInterval(timer);
+  if (document.getElementById('auto').checked) timer = setInterval(refresh, 1500);
+}
+schedule();
+
+img.onload = () => { document.getElementById('dot').style.background = '#7ee787'; };
+img.onerror = () => { document.getElementById('dot').style.background = '#f85149'; };
+
+// 点击屏幕 → 注入触摸
+wrap.addEventListener('click', (e) => {
+  const r = img.getBoundingClientRect();
+  const x = Math.round((e.clientX - r.left) / r.width  * W);
+  const y = Math.round((e.clientY - r.top)  / r.height * H);
+  cross.style.display = 'block';
+  cross.style.left = (x / W * r.width) + 'px';
+  cross.style.top  = (y / H * r.height) + 'px';
+  setTimeout(()=>cross.style.display='none', 600);
+  fetch('/tap?x=' + x + '&y=' + y + q('token')).then(r=>r.json()).then(d=>{
+    flash.textContent = (d.ok ? '✓ 已点击 (' + x + ',' + y + ')' : '✗ ' + (d.error||'失败'));
+    setTimeout(refresh, 350);
+  });
+});
+
+async function call(path){
+  const r = await fetch(path + q('token'));
+  const d = await r.json();
+  flash.textContent = d.ok ? ('✓ ' + d.action + ' 成功') : ('✗ ' + (d.error || '失败'));
+  setTimeout(refresh, 350);
+  return d;
+}
+function doTap(){ const x=+document.getElementById('cx').value, y=+document.getElementById('cy').value; call('/tap?x='+x+'&y='+y); }
+function doLong(){ const x=+document.getElementById('cx').value, y=+document.getElementById('cy').value, ms=+document.getElementById('cms').value; call('/long?x='+x+'&y='+y+'&ms='+ms); }
+function doSwipe(){ const x1=+document.getElementById('cx').value, y1=+document.getElementById('cy').value, x2=+document.getElementById('cy').value, y2=+document.getElementById('cms').value, ms=400; call('/swipe?x1='+x1+'&y1='+y1+'&x2='+x2+'&y2='+y2+'&ms='+ms); }
+
+function loadLogs(what){
+  fetch('/logs?what=' + what + '&n=40' + q('token')).then(r=>r.text()).then(t=>{
+    document.getElementById('logs').textContent = t || '（无输出）';
+  });
+}
+
+fetch('/status' + q('token')).then(r=>r.json()).then(s=>{
+  document.getElementById('hdrMeta').textContent = s.hostname + ' · ' + (s.ips||[]).join(' / ');
+  document.getElementById('status').innerHTML =
+    '<b>主机名</b> ' + s.hostname + '<br>' +
+    '<b>IP</b> ' + (s.ips||[]).join(', ') + '<br>' +
+    '<b>运行时间</b> ' + s.uptime + '<br>' +
+    '<b>屏幕</b> ' + s.screen[0] + '×' + s.screen[1] + '<br>' +
+    '<b>注入器</b> ' + s.tap_bin + '<br>' +
+    '<b>鉴权</b> ' + (s.token_on ? '已启用 token' : '未启用（局域网内请自行评估）');
+}).catch(()=>{});
+
+refresh();
+</script>
+</body>
+</html>

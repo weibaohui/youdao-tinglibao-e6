@@ -74,7 +74,24 @@ else
     echo "缺少 /userdisk/ssh/start_adbd.sh"
 fi
 
-# ---------- 5) 拉起看门狗 ----------
+# ---------- 5) 拉起 HTTP 调试服务（截图 / 点击 / 日志 的网页接口） ----------
+if [ -x /userdisk/e6_debug_server ]; then
+    if port_open 8080; then
+        echo "调试服务已在运行（8080 端口在监听）"
+    else
+        setsid /userdisk/e6_debug_server >/userdisk/ssh/debug_server.log 2>&1 &
+        sleep 2
+        if port_open 8080; then
+            echo "调试服务已启动（http://$(ip -4 addr show wlan0 2>/dev/null | grep -oE 'inet [0-9.]+' | head -1 | cut -d' ' -f2):8080/）"
+        else
+            echo "调试服务启动失败"
+        fi
+    fi
+else
+    echo "缺少 /userdisk/e6_debug_server，跳过 HTTP 调试服务"
+fi
+
+# ---------- 6) 拉起看门狗 ----------
 if [ -x /userdisk/ssh/watchdog.sh ]; then
     if pid_alive /run/e6_watchdog.pid; then
         echo "watchdog 已在运行"

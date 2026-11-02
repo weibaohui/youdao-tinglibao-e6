@@ -45,7 +45,8 @@ youdao-tinglibao-e6/
 │   ├── ROOT_GUIDE.md       # Root 提权与 EROFS 哈希热补丁全教程
 │   ├── MINIAPP_DEV.md      # Falcon 轻应用开发完全指南（入口契约/四大能力）
 │   ├── SCREENSHOT_AND_INPUT.md  # 真机截图与触摸注入（点击界面）完全指南
-│   └── PERSISTENT_ACCESS.md     # 永久免密 ADB + SSH（重启后自动恢复）
+│   ├── PERSISTENT_ACCESS.md     # 永久免密 ADB + SSH（重启后自动恢复）
+│   └── REMOTE_DEBUG.md          # HTTP 远程调试接口（截图/点击/日志）
 ├── miniapp/                # Falcon 轻应用（.amr）开发套件
 │   ├── build_miniapp.sh    # 一键构建 → 部署 → 启动 → 抓屏取证
 │   ├── e6_demo_app/        # 四合一能力演示应用（界面/联网/文件/声音）
@@ -54,6 +55,7 @@ youdao-tinglibao-e6/
 │   ├── hello_screen/       # 60FPS DRM 无闪烁双缓冲图形程序 (Go 实现)
 │   ├── launcher_watcher/   # 原生桌面应用点击事件捕获与唤醒守护进程
 │   ├── tap/                # e6_tap：触摸屏注入器（点击/滑动/长按）
+│   ├── e6_debug_server/    # HTTP 远程调试服务（截图/点击/日志 + 网页面板）
 │   └── web_server/         # 极轻量级板载 Web 文件/管理服务器
 ├── custom_app/             # 桌面自制应用模板 (独立 AppID 注册包与图标)
 │   ├── manifest.json       # 轻应用元数据与 SHA/MD5 校验
@@ -176,6 +178,26 @@ adb connect 192.168.0.201:5555                  # 无线 ADB，零口令
 > **完整指南见 [`docs/PERSISTENT_ACCESS.md`](docs/PERSISTENT_ACCESS.md)** ——
 > 含 bind-mount 原理、开机钩子源码、重启验证记录、卸载方法，
 > 以及这台机器上 8 个会让脚本静默出错的怪癖（退出码不透传、stdin 转发挂死、没有 pgrep ……）。
+
+---
+
+## 🌐 HTTP 远程调试接口
+
+不想插线、也不想开 SSH 的时候，浏览器直接开 **[`http://<ip>:8080/`](docs/REMOTE_DEBUG.md)**：
+
+- 左边是**实时屏幕**（1.5 秒自动刷新），**点画面任意位置 = 给设备注入一次点击**；
+- 右边有设备状态、日志面板（app / sound / error）、手动点击/长按/滑动；
+- 也提供纯 API：`/shot.png`、`/tap?x=&y=`、`/swipe`、`/long`、`/logs`、`/status`。
+
+```bash
+curl http://192.168.0.201:8080/shot.png -o shot.png
+curl "http://192.168.0.201:8080/tap?x=177&y=295"
+```
+
+服务由开机钩子拉起、看门狗守护，重启后自动恢复。
+
+> **完整文档见 [`docs/REMOTE_DEBUG.md`](docs/REMOTE_DEBUG.md)** ——
+> 含接口清单、实现要点、可选 token 鉴权、以及三条通道（HTTP / SSH / ADB）怎么选。
 
 ---
 

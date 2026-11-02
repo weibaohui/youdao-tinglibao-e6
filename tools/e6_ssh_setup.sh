@@ -47,25 +47,48 @@ echo
 adb_s() { adb -s "$TARGET" shell "$@"; }
 adb_p() { adb -s "$TARGET" push "$1" "$2" >/dev/null; }
 
-echo "==> [1/5] 准备目录"
+echo "==> [1/6] 准备目录"
 adb_s 'mkdir -p /userdisk/ssh /userdisk/skip_re; chmod 700 /userdisk/ssh' >/dev/null
 
-echo "==> [2/5] 部署 ADB 鉴权脚本（恒成功）"
+echo "==> [2/6] 部署 ADB 鉴权脚本（恒成功）"
 adb_p "$SCRIPTS/adbd_auth.sh" /userdisk/ssh/adbd_auth.sh
 adb_s 'chmod +x /userdisk/ssh/adbd_auth.sh' >/dev/null
 
-echo "==> [3/5] 部署 sshd 配置与公钥"
+echo "==> [3/6] 部署 sshd 配置与公钥"
 adb_p "$SCRIPTS/sshd_config" /userdisk/ssh/sshd_config
 adb_p "$TMP/authorized_keys"      /userdisk/ssh/authorized_keys
 adb_s 'chmod 600 /userdisk/ssh/sshd_config /userdisk/ssh/authorized_keys' >/dev/null
 
-echo "==> [4/5] 部署 adbd 启动脚本、开机钩子与看门狗"
+echo "==> [4/6] 部署 adbd 启动脚本、开机钩子与看门狗"
 adb_p "$SCRIPTS/start_adbd.sh" /userdisk/ssh/start_adbd.sh
 adb_p "$SCRIPTS/watchdog.sh"  /userdisk/ssh/watchdog.sh
 adb_p "$SCRIPTS/skip_login.sh" /userdisk/skip_re/skip_login.sh
 adb_s 'chmod +x /userdisk/ssh/start_adbd.sh /userdisk/ssh/watchdog.sh /userdisk/skip_re/skip_login.sh' >/dev/null
 
-echo "==> [5/5] 立即生效"
+echo "==> [5/6] 部署触摸注入器与 HTTP 调试服务"
+# 触摸注入器（点击/滑动/长按的底层工具）
+if [ -f "$HERE/../src/tap/e6_tap" ]; then
+  adb_p "$HERE/../src/tap/e6_tap" /userdisk/e6_tap
+  adb_s 'chmod +x /userdisk/e6_tap' >/dev/null
+elif ! adb_s 'test -x /userdisk/e6_tap' >/dev/null 2>&1; then
+  echo "  ⚠️ 没有 src/tap/e6_tap，设备上也没有 —— 点击功能不可用" >&2
+  echo "     可先跑: (cd src/tap && ./build.sh)" >&2
+fi
+
+# HTTP 调试服务（截图 / 点击 / 日志）
+DBG_BIN="$HERE/../src/e6_debug_server/e6_debug_server"
+if [ ! -f "$DBG_BIN" ]; then
+  echo "  · 正在编译 HTTP 调试服务..."
+  (cd "$HERE/../src/e6_debug_server" && ./build.sh) >/dev/null
+fi
+if [ -f "$DBG_BIN" ]; then
+  adb_p "$DBG_BIN" /userdisk/e6_debug_server
+  adb_s 'chmod +x /userdisk/e6_debug_server' >/dev/null
+else
+  echo "  ⚠️ HTTP 调试服务编译失败，跳过" >&2
+fi
+
+echo "==> [6/6] 立即生效"
 adb_s '/userdisk/skip_re/skip_login.sh' >/dev/null 2>&1 || true
 sleep 3
 adb_s 'ls -l /userdisk/ssh/ /userdisk/skip_re/' | tr -d '\r'

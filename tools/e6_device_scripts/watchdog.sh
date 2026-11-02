@@ -63,4 +63,10 @@ while true; do
         setsid /userdisk/ssh/start_adbd.sh >/dev/null 2>&1 &
         echo "$(date '+%F %T') adbd 已重新拉起"
     fi
+
+    # ---- HTTP 调试服务：以 8080 端口为准 ----
+    if [ -x /userdisk/e6_debug_server ] && ! port_open 8080; then
+        setsid /userdisk/e6_debug_server >/userdisk/ssh/debug_server.log 2>&1 &
+        echo "$(date '+%F %T') 调试服务已重新拉起"
+    fi
 done
