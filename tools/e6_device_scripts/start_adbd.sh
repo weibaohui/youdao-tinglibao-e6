@@ -4,14 +4,15 @@
 #
 # 为什么不用 `adb tcpip 5555`（宿主机命令）：
 #   那条命令让 adbd 自杀重启，但本机 inittab 里**没有 adbd 的 respawn 条目**
-#   （只有 `::respawn:-/bin/login`），adbd 起来后没人再拉它 —— 实测直接失联，
-#   USB 和 TCP 端口会同时消失，只能靠物理操作救回来。
+#   （只有 `::respawn:-/bin/login`），adbd 起来后没人再拉它 —— 实测直接失联。
 #   这里改为按正确的环境变量手动拉起。
 #
 # 环境变量来源：
 #   SN / SLOT          —— /etc/profile.d/bootenv.sh 从 /proc/cmdline 取
 #   ADB_TCP_PORT       —— /etc/profile.d/adbd_tcp_port.sh 固定为 5555
 #   其余               —— 照抄原厂 adbd 进程的环境
+#
+# 写 PID 文件供看门狗判断用（exec 不改变 PID，所以 PID 始终有效）。
 #
 export USER=root
 export LD_LIBRARY_PATH=/lib:/usr/lib
@@ -29,4 +30,7 @@ export LC_ALL=zh_CN.utf8
 export PWD=/oem/YoudaoDictPen/output
 export ADB_TCP_PORT=${ADB_TCP_PORT:-5555}
 
-/usr/bin/adbd
+mkdir -p /run
+echo $$ > /run/e6_adbd.pid
+
+exec /usr/bin/adbd

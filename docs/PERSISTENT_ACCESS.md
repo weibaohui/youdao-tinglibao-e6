@@ -166,10 +166,50 @@ AuthorizedKeysFile /userdisk/ssh/authorized_keys
 | `/userdisk/ssh/sshd_config` | sshd 配置（`AuthorizedKeysFile` 指向可写分区） |
 | `/userdisk/ssh/authorized_keys` | 你的公钥 |
 | `/userdisk/ssh/start_adbd.sh` | 带 `ADB_TCP_PORT=5555` 拉起 adbd |
+| `/userdisk/ssh/watchdog.sh` | 看门狗：sshd / adbd 掉了自动补 |
 | `/userdisk/ssh/boot.log` | 开机钩子日志 |
+| `/userdisk/ssh/watchdog.log` | 看门狗日志 |
 | `/userdisk/skip_re/skip_login.sh` | **开机钩子本体**（固件自带调用点） |
+| `/run/e6_adbd.pid`、`/run/e6_watchdog.pid` | PID 文件（`/run` 是 tmpfs，重启重建） |
 
 仓库里的对应源文件：`tools/e6_device_scripts/`。
+
+### 3.1 看门狗
+
+`sshd` 和 `adbd` 都由钩子拉起，但它们仍可能被干掉 —— 比如你在设备设置里打开
+「法律监管」ADB 开关时，框架会自己拉一个 adbd，抢不到 5555 就退出，
+或者直接 `killall adbd` 把我们的也带走。
+
+所以钩子还会拉起一个看门狗，每 30 秒检查一次：
+
+- **22 端口不监听** → 重新拉起 sshd
+- **5555 端口不监听** → 回收残留 adbd，重新拉起
+
+实测破坏测试：
+
+```bash
+# 杀掉 sshd 和 adbd
+ssh root@<ip> 'for p in $(ps | awk "/sshd -f \/userdisk/ && !/awk/{print \$1}"); do kill $p; done
+                for p in $(ps | awk "\$NF==\"/usr/bin/adbd\"{print \$1}"); do kill $p; done'
+```
+
+```
+[5s]  ssh=✗ adb=✗
+...
+[30s] ssh=✓ adb=✓        ← 30 秒内全部自动恢复
+```
+
+看门狗日志：
+
+```
+2026-11-02 10:39:32 sshd 已重新拉起
+2026-11-02 10:39:33 adbd 已重新拉起
+```
+
+> ⚠️ 看门狗里**不能**用 `ps | grep "xxx"` 判断进程存活：这台机器的 busybox 没有
+> `pgrep`/`pkill`，而且字符串匹配会被**调用方自己的 cmdline**误匹配
+> （`adb shell '... watchdog.sh ...'` 的命令行里就含这个名字，会造成"以为自己已经在跑"的假阳性）。
+> 所以统一用 **PID 文件 + `kill -0`** 和**端口探测**。
 
 ---
 

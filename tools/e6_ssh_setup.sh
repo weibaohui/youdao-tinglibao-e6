@@ -11,7 +11,8 @@
 #   2) /userdisk/ssh/sshd_config      —— OpenSSH 配置（复用系统自带主机密钥）
 #   3) /userdisk/ssh/authorized_keys  —— 你的公钥
 #   4) /userdisk/ssh/start_adbd.sh    —— 手动拉起带 ADB_TCP_PORT=5555 的 adbd
-#   5) /userdisk/skip_re/skip_login.sh—— 开机钩子（固件自带调用点）
+#   5) /userdisk/ssh/watchdog.sh      —— 看门狗：sshd / adbd 掉了自动补
+#   6) /userdisk/skip_re/skip_login.sh—— 开机钩子（固件自带调用点）
 #
 # 原理：固件的 /etc/init.d/S99_run_test_scripts 会执行 /userdisk/skip_re/skip_login.sh，
 #       而 /userdisk 是 ext4 持久分区 —— 这就是"永久"的落点。
@@ -58,10 +59,11 @@ adb_p "$SCRIPTS/sshd_config" /userdisk/ssh/sshd_config
 adb_p "$TMP/authorized_keys"      /userdisk/ssh/authorized_keys
 adb_s 'chmod 600 /userdisk/ssh/sshd_config /userdisk/ssh/authorized_keys' >/dev/null
 
-echo "==> [4/5] 部署 adbd 启动脚本与开机钩子"
+echo "==> [4/5] 部署 adbd 启动脚本、开机钩子与看门狗"
 adb_p "$SCRIPTS/start_adbd.sh" /userdisk/ssh/start_adbd.sh
+adb_p "$SCRIPTS/watchdog.sh"  /userdisk/ssh/watchdog.sh
 adb_p "$SCRIPTS/skip_login.sh" /userdisk/skip_re/skip_login.sh
-adb_s 'chmod +x /userdisk/ssh/start_adbd.sh /userdisk/skip_re/skip_login.sh' >/dev/null
+adb_s 'chmod +x /userdisk/ssh/start_adbd.sh /userdisk/ssh/watchdog.sh /userdisk/skip_re/skip_login.sh' >/dev/null
 
 echo "==> [5/5] 立即生效"
 adb_s '/userdisk/skip_re/skip_login.sh' >/dev/null 2>&1 || true
