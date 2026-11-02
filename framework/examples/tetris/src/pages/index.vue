@@ -30,6 +30,7 @@
 </template>
 
 <script>
+import UI from './e6ui.js';
 import buttonEventModule from 'buttonEvent';
 
 /* ---------- 形状定义：每种方块的基础矩阵，旋转态运行时生成 ---------- */
@@ -233,27 +234,7 @@ export default {
     const hs = new UI.Storage('tetris_high');
     const self = this;
     hs.get('high', 0).then(function (v) { if (v > 0) self.high = v; });
-    try {
-      /* E6 导出为小写 buttonEvent（S7 Pro 文档写的是 ButtonEvent），
-         且实例没有 .on() —— 事件以 JQSignal 属性暴露，回调 = 直接给属性赋函数 */
-      const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
-      const be = new Ctor();
-      const self = this;
-      be.setButtonEventReady(true);
-      /* JQSignal 属性赋值式注册：给信号属性直接赋回调 */
-      be.playButtonClick = function (a, b, c) {
-        console.warn('[tetris] ARGS [' + String(a).slice(0, 30) + '][' + String(b).slice(0, 20) + '][' + String(c).slice(0, 20) + ']');
-      };
-      this.dbg = 'assigned';
-      /* 事件回调 = 组件上的同名方法（见 methods）：backButtonClick 等。
-         HaasUI 桌面的 this.homeButtonRelease 泄露了这一约定。 */
-      self._be = be;
-      console.warn('[tetris] 物理按键监听就绪（signal 属性式）');
-    } catch (e) {
-      this.dbg = String(e).slice(0, 30);
-    }
-    this.nextType = this.randType();
-    this.spawn();
+    this.startKeys();
     this.nextType = this.randType();
     this.spawn();
     this.computeGhost();
@@ -261,13 +242,65 @@ export default {
   },
 
   methods: {
-    /* ===== 物理按键（框架按信号名回调组件方法） ===== */
-    backButtonClick() { console.warn('[tetris] KEY prev'); this.shift(-1); },
-    forwardButtonClick() { console.warn('[tetris] KEY next'); this.shift(1); },
-    homeButtonClick() { console.warn('[tetris] KEY home'); this.rotate(); },
-    playButtonClick() { console.warn('[tetris] KEY play'); this.hardDrop(); },
-    volumeUpButtonClick() { console.warn('[tetris] KEY volup'); this.shift(1); },
-    volumeDownButtonClick() { console.warn('[tetris] KEY voldown'); this.shift(-1); },
+    async startKeys() {
+      console.warn('[tetris] startKeys enter');
+      try {
+        await process.exec('sh', ['-c',
+          'P=$(find /userdisk/secondary/miniapp/data/mini_app/pkg/8090906000000004 -name e6keyed 2>/dev/null | head -1); ' +
+          '[ -n "$P" ] && cp "$P" /tmp/e6keyed && chmod 755 /tmp/e6keyed; ' +
+          'kill $(cat /tmp/e6keyed.pid 2>/dev/null) 2>/dev/null; ' +
+          'rm -f /tmp/e6keyed.pid /tmp/e6keys.buf /tmp/e6keys.heartbeat'],
+          { timeout: 8000 });
+        console.warn('[tetris] extract done');
+        await process.exec('/tmp/e6keyed', [], { timeout: 5000 });
+        console.warn('[tetris] e6keyed 已拉起');
+      } catch (e) {
+        console.warn('[tetris] 守护拉起失败: ' + e);
+      }
+      /* 物理键信号注册（JQSignal 属性赋值式） */
+      try {
+        const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
+        const be = new Ctor();
+        be.setButtonEventReady(true);
+        be.backButtonClick = (a) => { console.warn('[tetris] BACK fired arg=[' + String(a).slice(0, 16) + ']'); this.shift(-1); };
+        be.forwardButtonClick = (a) => { console.warn('[tetris] FWD fired arg=[' + String(a).slice(0, 16) + ']'); this.shift(1); };
+        be.homeButtonClick = (a) => { console.warn('[tetris] HOME fired'); this.rotate(); };
+        be.playButtonClick = (a) => { console.warn('[tetris] PLAY fired'); this.hardDrop(); };
+        console.warn('[tetris] 信号已注册（属性赋值式）');
+      } catch (e) {
+        this.dbg = 'T=' + (typeof buttonEventModule) + ' K=' + (function () {
+          try { return Object.keys(buttonEventModule).join('|'); } catch (e2) { return 'ERR'; }
+        })();
+        console.warn('[tetris] 模块形状 ' + this.dbg);
+        console.warn('[tetris] 信号注册失败 ' + e);
+      }
+      this.keysLoop();
+    },
+
+    keysLoop() {
+      const self = this;
+      const tick = function () {
+        if (self._keysDead) return;
+        process.exec('sh', ['-c',
+          'cat /tmp/e6keys.buf 2>/dev/null; : > /tmp/e6keys.buf; echo 1 > /tmp/e6keys.heartbeat'],
+          { timeout: 4000 }).then(function (r) {
+            const out = String((r && r.stdout) || '');
+            if (out) {
+              const acts = out.trim().split(String.fromCharCode(10));
+              for (let i = 0; i < acts.length; i++) {
+                const a = acts[i];
+                if (a === 'left') self.shift(-1);
+                else if (a === 'right') self.shift(1);
+                else if (a === 'rotate') self.rotate();
+                else if (a === 'drop') self.hardDrop();
+              }
+            }
+            setTimeout(tick, 150);
+          }).catch(function () { setTimeout(tick, 300); });
+      };
+      tick();
+    },
+
     randType() {
       return TYPES[Math.floor(Math.random() * TYPES.length)];
     },

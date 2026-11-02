@@ -9,10 +9,10 @@ Vue SFC、自定义组件（棋盘/预览/按钮）、定时器重力循环、�
 
 | 输入 | 动作 |
 | :--- | :--- |
-| 屏幕按钮 左 / 右 | 移动 |
-| 屏幕按钮 转 | 顺时针旋转（带踢墙） |
-| 屏幕按钮 落 | 硬降（+2 分/行） |
-| 物理键 prev / next / home / play | **4.7.5 固件被系统消费，应用收不到**（见下） |
+| **物理键 上一首 / 下一首** | 左移 / 右移 |
+| **物理键 Home/录音** | 顺时针旋转（带踢墙） |
+| **物理键 播放/暂停** | 硬降（+2 分/行） |
+| 屏幕按钮（左/右/转/落） | 同上，触屏镜像 |
 
 规则：标准 7 种方块 + 7-bag 随机、软降每 640ms（随消行加速至 280ms）、
 消行计分 100/300/500/800、硬降 2 分/行、堆到顶 = 游戏结束（按任意操作键重开）。
@@ -24,21 +24,26 @@ framework/bin/e6app build framework/examples/tetris
 framework/bin/e6app run   framework/examples/tetris
 ```
 
-## 物理按键的真机结论（重要，2026-11-02 实测）
+## 物理按键 —— 已打通（2026-11-03 最终结论）
 
-目标映射（上一首=左移、下一首=右移、播放=坠落、Home=变形）**在 4.7.5 固件上不可行**：
+**上一首=左移、下一首=右移、播放=硬降、Home=旋转**，全部真机生效。
 
-1. `buttonEvent` 模块存在且可实例化，但导出为**小写** `buttonEvent`
-   （S7 Pro 文档写 `ButtonEvent`）；实例只有 3 个方法：
-   `setButtonEventReady` / `softButtonEvent` / `emitBottomSwipeBackEvent`
-   —— **没有 S7 的 `.on(event, cb)`**。
-2. 按键信号是 JQSignal 属性（`backButtonClick` 等），但对属性赋函数、
-   `.connect()`、方法名约定（组件上定义 `backButtonClick()`）**全部不触发**。
-3. 系统层直接消费：prev(158)=返回导航（**会把应用直接关掉**）、home(139)=桌面循环、
-   next(159)/play(207)=静默吞掉。注入后事件既不到应用 JS，也不留日志。
+正确用法（缺一不可，每条都是踩坑换来的）：
 
-→ 触屏按钮为唯一可靠输入。物理键若要接管，需要更深层的输入子系统改造
-（如 /dev/input 层面的 remap 守护），超出本框架范围。
+1. **构造器大小写双兜底**：`buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent`
+   —— 模块导出键在不同加载时机只枚举出一个（keys 时而 `ButtonEvent` 时而
+   `buttonEvent`，应为同一绑定的两个别名），单写一种会间歇性
+   `TypeError: not a function`。
+2. **订阅 = JQSignal 属性赋值**（箭头函数）：
+   `be.backButtonClick = (a) => {...}` —— E6 实例没有 S7 的 `.on()`；
+   `.connect()`、方法名约定（组件定义 `backButtonClick()`）也都不触发。
+3. **必须 `setButtonEventReady(true)`**：声明接管后，prev/home 不再触发
+   系统「返回导航」/桌面循环 —— 游戏不会被误退出。
+
+曾经的死路（留档）：S7 文档照抄 `ButtonEvent` 大写构造 → not a function；
+`.on()` → not a function；属性赋值后未验证前台状态的轮次造成"不触发"假象。
+NetEase 能响应播放键是因为其私有 so 在原生层注册了媒体会话
+（YDALAPI::MediaPlayer::MediaList），与 buttonEvent 是两条独立通路。
 
 ## 实现要点（框架契约的活样本）
 
