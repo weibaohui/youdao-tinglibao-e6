@@ -59,8 +59,9 @@ youdao-tinglibao-e6/
 │   └── app_icon.png        # 桌面图标文件 (102x94)
 └── tools/                  # 常用开发脚本
     ├── build_all.sh        # 一键交叉编译所有组件
-    ├── connect_wifi.sh     # Wi-Fi ADB 无线连接脚本
+    ├── connect_wifi.sh     # Wi-Fi ADB 无线连接（自动找设备 IP）
     ├── push_and_run.sh     # 一键推送 ARM 二进制到设备运行
+    ├── e6_device.sh        # 自动解析 ADB 目标（USB 优先，否则按 MAC 找 IP）
     ├── e6_ui.sh            # 界面自动化：截图/点击/滑动/长按/日志/diff
     └── pngdiff.py          # 像素级 A/B diff（判定操作是否真的生效）
 ```

@@ -15,7 +15,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 
 APP_DIR="${1:-$REPO/miniapp/e6_demo_app}"
-DEVICE="${E6_ADB:-192.168.0.109:5555}"
+# ★ 自动解析 ADB 目标：USB 优先，否则按 MAC 找当前 WiFi IP（换 WiFi 也不会失效）
+# shellcheck source=../tools/e6_device.sh
+source "$REPO/tools/e6_device.sh"
+DEVICE="$(e6_resolve_device)"
+[ -z "$DEVICE" ] && DEVICE="192.168.0.109:5555"   # 兜底：实在解析不出来时的旧默认
+export E6_ADB="$DEVICE"                            # 让 build_amr.py 用同一个目标
 SHOT="${SHOT:-/tmp/e6_miniapp.png}"
 LOG="${LOG:-/userdata/applog/YD_PEN_APP.log}"
 

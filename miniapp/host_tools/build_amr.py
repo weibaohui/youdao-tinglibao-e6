@@ -207,8 +207,8 @@ def main():
     parser.add_argument("-M", "--module", action="append", default=[], help="Declare external C/runtime module for qjsc")
     parser.add_argument("--deploy", action="store_true", help="Push and install onto the E6 over ADB")
     parser.add_argument("--start", action="store_true", help="Start application immediately after installation")
-    parser.add_argument("--device", default=os.environ.get("E6_ADB", "192.168.0.109:5555"),
-                        help="ADB target serial (USB serial or TCP host:port)")
+    parser.add_argument("--device", default=os.environ.get("E6_ADB", ""),
+                        help="ADB target serial (USB serial or TCP host:port); 空=自动解析")
     args = parser.parse_args()
 
     manifest_path = Path(args.src_dir) / "manifest.json"
@@ -230,6 +230,18 @@ def main():
 
     if args.deploy:
         dev = args.device
+        if not dev:
+            # 自动解析：USB 优先，否则按 MAC 找当前 WiFi IP
+            resolver = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "e6_device.sh")
+            try:
+                out = subprocess.run(["bash", "-c", f"source {resolver} && e6_resolve_device"],
+                                     capture_output=True, text=True, timeout=120)
+                dev = out.stdout.strip()
+            except Exception:
+                dev = ""
+        if not dev:
+            print("找不到 E6 的 ADB 目标（请用 --device 指定，或设置 E6_ADB 环境变量）", file=sys.stderr)
+            sys.exit(1)
         remote_amr = f"/tmp/{os.path.basename(amr_path)}"
 
         print(f"[Deploy] adb push {amr_path} -> {dev}:{remote_amr}")

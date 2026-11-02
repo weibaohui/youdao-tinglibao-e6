@@ -21,7 +21,15 @@
 #
 set -e
 
-DEVICE="${E6_DEVICE:-192.168.0.109:5555}"
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SELF_DIR/.." && pwd)"
+
+# ★ 自动解析 ADB 目标：USB 优先，否则按 MAC 找当前 WiFi IP（换 WiFi 也不会失效）
+# shellcheck source=./e6_device.sh
+source "$REPO_DIR/tools/e6_device.sh"
+
+DEVICE="$(e6_resolve_device)"
+[ -z "$DEVICE" ] && DEVICE="192.168.0.109:5555"   # 兜底：实在解析不出来时的旧默认
 TAP_BIN="/userdisk/e6_tap"
 
 while [ $# -gt 0 ]; do
@@ -40,7 +48,7 @@ need_tap() {
     return 0
   fi
   local src
-  src="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/tap/e6_tap"
+  src="$REPO_DIR/src/tap/e6_tap"
   echo "▸ 部署 $TAP_BIN ..." >&2
   adb_ push "$src" "$TAP_BIN" >/dev/null
   adb_ shell "chmod +x $TAP_BIN" >/dev/null

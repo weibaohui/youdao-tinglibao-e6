@@ -16,8 +16,52 @@ adb devices                   # 确认在线
 adb -s $D shell 'id'          # 应当看到 uid=0(root)
 ```
 
-设备端不需要装任何东西：截图走系统自带的 `miniapp_cli`，触摸注入用本仓库自带的
+### 0.1 ⚠️ 换 WiFi 后 IP 会变，别写死
+
+E6 用 DHCP，换个 WiFi 或重启后租约就变了（实测 `192.168.0.109` → `192.168.0.201`）。
+仓库提供了自动解析（**USB 优先，否则按 MAC 找当前 IP**）：
+
+```bash
+source tools/e6_device.sh
+D="$(e6_resolve_device)"      # → 192.168.0.201:5555 或 LE62200008802358
+IP="$(e6_resolve_ip)"         # → 192.168.0.201
+```
+
+`tools/e6_ui.sh`、`tools/connect_wifi.sh`、`miniapp/build_miniapp.sh`
+都已经接上这个解析器，**不用再改脚本里的 IP**。
+
+想知道设备当前 IP，又没有 USB 时，按 MAC 查 ARP 表即可：
+
+```bash
+arp -a | grep -i 64:82:14:fb:c1:13      # E6 的 WiFi MAC
+```
+
+（ARP 表里没有就先 `ping` 扫一遍本网段把表填上，脚本 `e6_warm_arp` 就是干这个的。）
+
+### 0.2 设备端不需要装任何东西
+
+截图走系统自带的 `miniapp_cli`，触摸注入用本仓库自带的
 `src/tap/e6_tap`（静态编译的 ARM 二进制，直接写 `/dev/input/event3`）。
+
+### 0.3 无线通道：设备侧必须开着 ADB 网络调试
+
+**换 WiFi 之后 `adb tcpip 5555` 通常会失效**（重启或换网后 adbd 不再监听 5555）。
+
+实测对 `192.168.0.201` 做**全端口扫描（1–65535）**，只有 **9307** 开着：
+
+| 端口 | 状态 | 说明 |
+|---|---|---|
+| 5555 / 5556 / 5037 | closed | adbd 没在 TCP 上监听 → 无线连不上 |
+| 9307 | **open** | 有道自己的 WebSocket 服务，但**是 stub**：任何合法 JSON 文本帧都回 `{"id":<回显>,"result":{}}`，非法 JSON 无响应，二进制回 `not text msg`。**死路，别浪费时间。** |
+
+所以纯无线要能连，前提是设备侧 ADB 网络调试是开的。插一次 USB 开一下即可：
+
+```bash
+adb -s LE62200008802358 tcpip 5555
+adb connect 192.168.0.201:5555
+```
+
+之后可以拔掉线，全程无线（`tools/e6_device.sh` 会自动跟上新的 IP）。
 
 ---
 
@@ -340,6 +384,7 @@ MD5 v_after.png   = 6b5ce0a85f1897f1e9d39bf2b588aba4   ← 变了
 
 | 坑 | 现象 | 对策 |
 |---|---|---|
+| 换 WiFi 后 IP 变了 | 脚本写死的 `192.168.0.109` 连不上 | 用 `tools/e6_device.sh` 自动解析（按 MAC 找） |
 | 设备无 `input`/`sendevent` | `input tap` 返回 0 但毫无反应 | 用 `e6_tap` 写 `/dev/input/event3` |
 | 内核丢弃重复 ABS 值 | 同坐标连点，事件流里没有 X/Y | 正常现象，框架读的是轴缓存值 |
 | **adbd 不透传退出码** | `adb shell false` 也返回 0，`&&` 判断全失效 | 看 stdout 标记（`&& echo __OK__`） |
