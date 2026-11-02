@@ -34,6 +34,11 @@ const URL_QUOTA =
   'https://open.bigmodel.cn/api/monitor/usage/quota/limit?type=2';
 const URL_RESETS =
   'https://open.bigmodel.cn/api/biz/customer-package-reset/list?targetType=TEAM';
+/* 账户余额 / 累计消耗：个人机构用 customer，团队机构用 org-owner（实测数值不同） */
+const URL_ACCT_CUST =
+  'https://open.bigmodel.cn/api/biz/account/query-customer-account-report';
+const URL_ACCT_ORG =
+  'https://open.bigmodel.cn/api/biz/account/query-org-owner-account-report';
 
 const REFRESH_INTERVAL_MS = 60 * 1000;
 
@@ -57,15 +62,30 @@ function rotr(x, n) {
   return ((x >>> n) | (x << (32 - n))) >>> 0;
 }
 
-/* 字符串 -> 字节数组（UTF-8；本项目内实际全是 ASCII） */
+/* 字符串 -> 字节数组（严格 UTF-8；含代理对/emoji 也要编对） */
 function strBytes(s) {
   const out = [];
   for (let i = 0; i < s.length; i++) {
-    let c = s.charCodeAt(i);
-    if (c < 128) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) {
       out.push(c);
-    } else if (c < 2048) {
+    } else if (c < 0x800) {
       out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+    } else if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
+      /* 高位代理 + 低位代理 -> 一个码点 -> 4 字节 UTF-8 */
+      const c2 = s.charCodeAt(i + 1);
+      if (c2 >= 0xdc00 && c2 <= 0xdfff) {
+        const cp = 0x10000 + ((c - 0xd800) << 10) + (c2 - 0xdc00);
+        out.push(
+          0xf0 | (cp >> 18),
+          0x80 | ((cp >> 12) & 63),
+          0x80 | ((cp >> 6) & 63),
+          0x80 | (cp & 63)
+        );
+        i++;
+        continue;
+      }
+      out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
     } else {
       out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
     }
@@ -207,30 +227,58 @@ function fmtTokens(n) {
   return '' + n;
 }
 
+/* 金额：接口给的是「元」为单位的浮点（balance / totalSpendAmount …） */
+function fmtMoney(n) {
+  if (n === null || n === undefined || n < 0) return '--';
+  return '¥' + Number(n).toFixed(2);
+}
+
 function fmtNow() {
   const d = new Date();
   return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
 }
 
 async function readJsonFile(path) {
-  try {
-    const r = await process.exec('sh', ['-c', 'cat ' + path + ' 2>/dev/null'], { timeout: 8000 });
-    const t = String((r && r.stdout) || '').trim();
-    return t ? safeJson(t) : null;
-  } catch (e) {
-    console.warn('[GlmUsage] readJsonFile fail', path, e);
-    return null;
+  /* 两种形状都试：argv 形式（exec('cat', [path])）优先，sh -c 兜底。
+     装包后重载时 sh -c 曾经静默返回空 stdout，所以这里把两种都记录下来。 */
+  const attempts = [
+    ['cat', [path]],
+    ['sh', ['-c', 'cat ' + path + ' 2>/dev/null']]
+  ];
+  for (let i = 0; i < attempts.length; i++) {
+    let r;
+    try {
+      r = await process.exec(attempts[i][0], attempts[i][1], { timeout: 8000 });
+    } catch (e) {
+      console.warn('[GlmUsage] readJsonFile exec throw', attempts[i][0], String(e).slice(0, 60));
+      continue;
+    }
+    const out = String((r && r.stdout) || '');
+    const err = String((r && r.stderr) || '');
+    const t = out.trim();
+    if (t) {
+      const j = safeJson(t);
+      if (j) return j;
+      console.warn('[GlmUsage] readJsonFile not json (' + attempts[i][0] + '): ' + t.slice(0, 80));
+    } else {
+      console.warn('[GlmUsage] readJsonFile empty via=' + attempts[i][0] +
+        ' code=' + (r && r.code) + ' err=' + err.slice(0, 80).replace(/\n/g, ' '));
+    }
   }
+  return null;
 }
 
 /* 写入的 JSON 由本 App / 配置脚本生成，值里不会有单引号（下发脚本已清洗） */
 async function writeJsonFile(path, obj) {
+  const s = JSON.stringify(obj);
   try {
-    const s = JSON.stringify(obj);
     const r = await process.exec('sh', ['-c', "echo '" + s + "' > " + path], { timeout: 8000 });
-    return r && r.code === 0;
+    const code = r && r.code;
+    console.warn('[GlmUsage] writeJsonFile ' + path + ' code=' + code +
+      ' err=' + String((r && r.stderr) || '').slice(0, 60).replace(/\n/g, ' '));
+    return code === 0;
   } catch (e) {
-    console.warn('[GlmUsage] writeJsonFile fail', path, e);
+    console.warn('[GlmUsage] writeJsonFile throw', path, String(e).slice(0, 60));
     return false;
   }
 }
@@ -314,7 +362,10 @@ async function fetchUsage(apiKey, ctx) {
     w5: { pct: -1, rem: -1, reset: 0 },
     wk: { pct: -1, rem: -1, reset: 0 },
     mcp: { used: -1, total: -1 },
-    r5: -1, rw: -1
+    r5: -1, rw: -1,
+    /* 该机构没有 coding plan（个人机构常见）——不算错误，降级成账户视图 */
+    noPlan: false,
+    acct: { balance: -1, available: -1, spend: -1, give: -1, err: '' }
   };
   const headers = {
     'Authorization': makeApiJwt(apiKey),
@@ -338,59 +389,111 @@ async function fetchUsage(apiKey, ctx) {
   }
   if (j.code !== 200) {
     const msg = String(j.msg || ('HTTP ' + r.status));
-    out.err = (j.code === 401 || j.code === 403 || j.code === 1001)
-      ? 'API Key 无效或未授权: ' + msg
-      : msg;
-    return out;
-  }
-
-  const data = j.data || {};
-  if (typeof data.level === 'string') out.level = data.level;
-
-  const limits = data.limits || [];
-  const windows = [];
-  for (let i = 0; i < limits.length; i++) {
-    const it = limits[i] || {};
-    const type = String(it.type || '');
-    if (type === 'TIME_LIMIT') {
-      out.mcp.used = it.currentValue === undefined ? -1 : Number(it.currentValue);
-      out.mcp.total = it.usage === undefined ? -1 : Number(it.usage);
-      continue;
+    /* 「当前用户不存在coding plan」= 这个机构压根没买编程套餐，
+       不是请求失败 —— 降级成账户余额/消耗视图，继续往下跑。 */
+    if (/coding\s*plan/i.test(msg)) {
+      out.noPlan = true;
+      out.level = '';
+    } else {
+      out.err = (j.code === 401 || j.code === 403 || j.code === 1001)
+        ? 'API Key 无效或未授权: ' + msg
+        : msg;
+      return out;
     }
-    if (type !== 'TOKENS_LIMIT' && type !== 'CREDIT_LIMIT') continue;
-    windows.push({
-      reset: it.nextResetTime === undefined ? 0 : Number(it.nextResetTime),
-      pct: it.percentage === undefined ? -1 : Number(it.percentage),
-      rem: it.remaining === undefined ? -1 : Number(it.remaining)
-    });
-  }
-  /* nextResetTime 更早的窗口就是 5 小时窗（与墨水屏版同一判据） */
-  if (windows.length > 0) {
-    windows.sort(function (a, b) { return (a.reset || Infinity) - (b.reset || Infinity); });
-    out.w5 = windows[0];
-    if (windows.length > 1) out.wk = windows[1];
-    else out.wk = windows[0];
+  } else {
+    const data = j.data || {};
+    if (typeof data.level === 'string') out.level = data.level;
+
+    const limits = data.limits || [];
+    const windows = [];
+    for (let i = 0; i < limits.length; i++) {
+      const it = limits[i] || {};
+      const type = String(it.type || '');
+      if (type === 'TIME_LIMIT') {
+        out.mcp.used = it.currentValue === undefined ? -1 : Number(it.currentValue);
+        out.mcp.total = it.usage === undefined ? -1 : Number(it.usage);
+        continue;
+      }
+      if (type !== 'TOKENS_LIMIT' && type !== 'CREDIT_LIMIT') continue;
+      windows.push({
+        reset: it.nextResetTime === undefined ? 0 : Number(it.nextResetTime),
+        pct: it.percentage === undefined ? -1 : Number(it.percentage),
+        rem: it.remaining === undefined ? -1 : Number(it.remaining)
+      });
+    }
+    /* nextResetTime 更早的窗口就是 5 小时窗（与墨水屏版同一判据） */
+    if (windows.length > 0) {
+      windows.sort(function (a, b) { return (a.reset || Infinity) - (b.reset || Infinity); });
+      out.w5 = windows[0];
+      if (windows.length > 1) out.wk = windows[1];
+      else out.wk = windows[0];
+    }
   }
 
   /* ③ 重置次数（可选数据，失败不影响主显示） */
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let rr;
-    try {
-      rr = await apiGet(URL_RESETS, headers);
-    } catch (e) {
-      break;
+  if (!out.noPlan) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let rr;
+      try {
+        rr = await apiGet(URL_RESETS, headers);
+      } catch (e) {
+        break;
+      }
+      const jr = safeJson(rr.body);
+      if (jr && jr.code === 200 && jr.data) {
+        out.r5 = countAvailable(jr.data.fiveHourResets);
+        out.rw = countAvailable(jr.data.weekResets);
+        break;
+      }
+      await sleep(400);
     }
-    const jr = safeJson(rr.body);
-    if (jr && jr.code === 200 && jr.data) {
-      out.r5 = countAvailable(jr.data.fiveHourResets);
-      out.rw = countAvailable(jr.data.weekResets);
-      break;
-    }
-    await sleep(400);
   }
+
+  /* ④ 账户余额 / 累计消耗（个人机构只有这一块，团队机构用 org-owner 口径） */
+  out.acct = await fetchAccount(apiKey, ctx, headers);
 
   out.ok = true;
   return out;
+}
+
+/*
+ * 余额 / 累计消耗。团队机构（ptype=2）走 query-org-owner-account-report，
+ * 个人机构走 query-customer-account-report；两个都试一遍，谁先成功用谁。
+ */
+async function fetchAccount(apiKey, ctx, headers) {
+  const out = { balance: -1, available: -1, spend: -1, give: -1, err: '' };
+  const order = (ctx && ctx.ptype === 2)
+    ? [URL_ACCT_ORG, URL_ACCT_CUST]
+    : [URL_ACCT_CUST, URL_ACCT_ORG];
+
+  for (let i = 0; i < order.length; i++) {
+    let r;
+    try {
+      r = await apiGet(order[i], headers);
+    } catch (e) {
+      continue;
+    }
+    const j = safeJson(r.body);
+    if (!j || j.code !== 200 || !j.data) continue;
+    const d = j.data;
+    out.balance = numOr(d.balance, -1);
+    out.available = numOr(d.availableBalance, -1);
+    out.spend = numOr(d.totalSpendAmount, -1);
+    out.give = numOr(d.giveAmount, -1);
+    if (out.balance < 0 && out.spend < 0) continue;
+    console.warn('[GlmUsage] acct src=' + (order[i] === URL_ACCT_ORG ? 'org' : 'cust') +
+      ' bal=' + out.balance + ' avail=' + out.available +
+      ' spend=' + out.spend + ' give=' + out.give);
+    return out;
+  }
+  out.err = '账户信息不可用';
+  return out;
+}
+
+function numOr(v, dflt) {
+  if (v === null || v === undefined || v === '') return dflt;
+  const n = Number(v);
+  return isNaN(n) ? dflt : n;
 }
 
 function countAvailable(arr) {
@@ -426,6 +529,9 @@ export default {
       mcpTotal: -1,
       r5: -1,
       rw: -1,
+      /* 该机构没有 coding plan -> 界面切成账户视图 */
+      noPlan: false,
+      acct: { balance: -1, available: -1, spend: -1, give: -1, err: '' },
       status: '启动中…',
       statusErr: false,
       updatedAt: '',
@@ -576,9 +682,11 @@ export default {
         this.mcpTotal = usage.mcp.total;
         this.r5 = usage.r5;
         this.rw = usage.rw;
+        this.noPlan = !!usage.noPlan;
+        this.acct = usage.acct || this.acct;
         this.hasData = true;
         this.updatedAt = fmtNow();
-        this.setStatus('已更新 ' + this.updatedAt, false);
+        this.setStatus(this.noPlan ? '该机构无编程套餐 · ' + this.updatedAt : '已更新 ' + this.updatedAt, false);
       } else {
         this.setStatus(usage.err || '查询失败', true);
         if (/API Key 无效/.test(usage.err || '')) this.hasData = false;
@@ -688,7 +796,8 @@ export default {
       ]);
     };
 
-    /* ------- MCP / 重置次数行 ------- */
+    /* ------- MCP / 重置次数 / 账户摘要行 ------- */
+    const acct = this.acct || { balance: -1, available: -1, spend: -1, give: -1 };
     const metaBits = [];
     if (this.mcpTotal > 0) {
       metaBits.push('MCP ' + this.mcpUsed + '/' + this.mcpTotal);
@@ -697,19 +806,58 @@ export default {
       metaBits.push('重置 5h×' + (this.r5 < 0 ? '-' : this.r5) +
                     ' 周×' + (this.rw < 0 ? '-' : this.rw));
     }
+    /* 账户摘要并进这一行 —— 单独一行会被 320px 屏高裁掉 */
+    if (acct.spend >= 0) metaBits.push('累计消耗 ' + fmtMoney(acct.spend));
+    if (acct.balance > 0) metaBits.push('余额 ' + fmtMoney(acct.balance));
     const metaRow = metaBits.length > 0
       ? h('text', {
           style: { color: '#8b949e', fontSize: '10px', marginTop: '10px', paddingLeft: '4px' }
         }, metaBits.join('   ·   '))
       : null;
 
+    /* ------- 账户卡（无编程套餐的机构靠它出数） ------- */
+    const acctRows = [
+      ['账户余额', fmtMoney(acct.balance)],
+      ['可用余额', fmtMoney(acct.available)],
+      ['累计消耗', fmtMoney(acct.spend)],
+      ['赠送额度', fmtMoney(acct.give)]
+    ];
+    const acctCard = h('div', {
+      style: {
+        height: '118px',
+        backgroundColor: '#161b22',
+        borderRadius: '10px',
+        paddingLeft: '12px',
+        paddingRight: '12px',
+        paddingTop: '10px',
+        marginTop: '8px'
+      }
+    }, [
+      h('text', { style: { color: '#8b949e', fontSize: '12px' } }, '账户用量'),
+      h('div', { style: { marginTop: '6px' } }, acctRows.map(function (r) {
+        return h('div', {
+          style: { flexDirection: 'row', alignItems: 'center', height: '22px' }
+        }, [
+          h('text', { style: { color: '#8b949e', fontSize: '12px', width: '76px' } }, r[0]),
+          h('text', { style: { color: '#e6edf3', fontSize: '13px' } }, r[1])
+        ]);
+      }))
+    ]);
+
     /* ------- 主布局 ------- */
     const contentKids = [];
     if (pills.length > 0) {
       contentKids.push(h('div', { style: { flexDirection: 'row', marginTop: '2px' } }, pills));
     }
-    contentKids.push(card('5 小时窗口', this.w5));
-    contentKids.push(card('本周额度', this.wk));
+    if (this.noPlan) {
+      contentKids.push(acctCard);
+      contentKids.push(h('text', {
+        style: { color: '#d29922', fontSize: '11px', marginTop: '10px', paddingLeft: '4px' }
+      }, '该机构未开通编程套餐，无额度窗口'));
+    } else {
+      contentKids.push(card('5 小时窗口', this.w5));
+      contentKids.push(card('本周额度', this.wk));
+    }
     if (metaRow) contentKids.push(metaRow);
 
     return h('div', {

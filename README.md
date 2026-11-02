@@ -105,7 +105,8 @@ youdao-tinglibao-e6/
     ├── e6_device.sh        # 自动解析 ADB 目标（USB 优先，否则按 MAC 找 IP）
     ├── e6_ui.sh            # 界面自动化：截图/点击/滑动/长按/日志/diff
     ├── e6_ssh_setup.sh     # 一键装好「永久免密 ADB + SSH」
-    ├── glm_usage_setup.sh  # GLM 用量 App 配置下发（API Key + JWT/org）
+    ├── glm_usage_setup.sh  # GLM 用量 App 配置下发（--api-key / --ctx / --jwt）
+    ├── glm_crypto_selftest.mjs  # 纯 JS SHA-256/HMAC 实现 vs Node crypto 对拍
     ├── e6_device_scripts/  # 部署到设备上的脚本（鉴权/sshd/adbd/开机钩子）
     ├── adb_root.sh         # 以 root 执行命令（自动完成 adbd 认证）
     ├── usb_to_wifi.sh      # 插 USB 后一键切到无线 ADB
@@ -127,8 +128,10 @@ miniapp/
 │   ├── app_icon.png       #   桌面图标
 │   └── assets/beep.wav    #   应用自带音频
 ├── glm_usage_app/         # GLM 用量查询（智谱套餐额度看板，见 docs/GLM_USAGE.md）
-│   ├── index.js           #   全部逻辑：纯 JS HMAC-SHA256 + 接口 + 界面
-│   └── app_icon.png       #   桌面图标（与墨水屏版同图）
+│   ├── app.js             #   入口：App 类 + 页面基类注册 + 页面加载器
+│   ├── index.js           #   全部逻辑：纯 JS HMAC-SHA256 + 接口 + 机构切换 + 界面
+│   ├── manifest.json      #   应用清单 + MD5 签名表
+│   └── app_icon.png       #   桌面图标（三色用量条）
 ├── host_tools/            # 构建工具链
 │   ├── qjsc               #   QuickJS 编译器（macOS arm64）
 │   ├── build_amr.py       #   .amr 打包器（自动签名 + adb 部署）
@@ -156,7 +159,8 @@ cd miniapp && ./build_miniapp.sh
 ### 📊 第一个实战 MiniApp：GLM 用量查询
 
 桌面图标点开即用 —— 查智谱 BigModel 套餐的 **5 小时窗口 / 本周额度**
-用量百分比、进度条、重置时间、重置次数，多机构/项目胶囊一键切换，
+用量百分比、进度条、重置时间、重置次数，**账号下多个机构/项目胶囊一键切换**
+（个人机构没买编程套餐时自动降级成账户余额/消耗视图），
 60 秒自动刷新。与 Metalio 墨水屏版、Kindle 版同源接口契约（第三块屏）：
 
 ```bash
@@ -164,19 +168,30 @@ cd miniapp && ./build_miniapp.sh
 cd miniapp && ./build_miniapp.sh glm_usage_app
 
 # 2. 下发配置（Key 只进设备 600 权限文件，不进应用包/仓库）
-cd .. && ./tools/glm_usage_setup.sh --api-key 'xxxx.yyyy' [--jwt '一次性网页JWT']
+cd .. && ./tools/glm_usage_setup.sh --api-key 'xxxx.yyyy' \
+    --ctx '团队编程套餐项目|org-XXXX|proj-YYYY|2' \
+    --ctx '默认项目|org-ZZZZ|proj-WWWW|1'
+
+# 3. 纯 JS 签名实现 vs Node crypto 对拍自检
+node tools/glm_crypto_selftest.mjs
 ```
 
 <p align="center">
-  <img src="docs/images/e6_glm_usage.png" width="240" alt="GLM 用量真机截图">
+  <img src="docs/images/glm-usage-coding-plan.png" width="240" alt="GLM 用量 · 团队编程套餐">
+  &nbsp;&nbsp;
+  <img src="docs/images/glm-usage-personal.png" width="240" alt="GLM 用量 · 个人机构账户视图">
   &nbsp;&nbsp;
   <img src="docs/images/e6_glm_desktop.png" width="240" alt="桌面上的 GLM 用量图标">
 </p>
 
-> 技术要点：E6 的 `http` 模块支持 HTTPS + 自定义请求头（真机实证）；
+> 技术要点：E6 的 `http` 模块支持 HTTPS + 自定义请求头（真机实证；
+> 但设备 `/etc/ssl/certs/` 是空的，命令行 `curl` 会报证书错误，所以不能用 curl 绕）；
 > BigModel 要的短时效 HS256 JWT 用 **纯 JS SHA-256/HMAC** 现算
-> （设备无 openssl/base64 命令，签名已与 Node crypto 对拍验证）。
-> 完整文档见 [`docs/GLM_USAGE.md`](docs/GLM_USAGE.md)。
+> （设备无 openssl/base64 命令，签名与 Node crypto 逐字节对拍验证）。
+>
+> 三个踩过的坑写在 [`docs/GLM_USAGE.md`](docs/GLM_USAGE.md)：
+> API Key JWT 和网页端 JWT **不能互换**、额度接口**必须**带机构/项目头（否则 200 但空数据）、
+> 个人机构「不存在 coding plan」是**正常降级**不是报错。
 
 ---
 

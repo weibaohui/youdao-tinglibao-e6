@@ -15,4 +15,8 @@ Thumbs.db
 miniapp/build/
 miniapp/e6_demo_app/*.js.bin
 miniapp/glm_usage_app/*.js.bin
+
+# GLM 用量 App 的设备端配置（含 API Key，绝不入库）
+miniapp/*/config.json
+miniapp/*/state.json
 src/e6_debug_server/e6_debug_server
