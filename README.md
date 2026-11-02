@@ -20,7 +20,7 @@
 3. **电容触摸屏防误触独占方案**：使用 Linux 内核 `EVIOCGRAB` 机制独占接管触摸屏，杜绝了返回桌面时的幽灵点击现象；
 4. **原生桌面图标无缝集成**：无需替换或破坏原厂任何内置功能（如网易云音乐），通过轻应用包热注册在系统桌面上生成独立图标入口，点击即可唤醒自定义原生程序；
 5. **永久免密 ADB + SSH**：借助固件自带的开机钩子（`S99_run_test_scripts` → `/userdisk/skip_re/skip_login.sh`）与 `mount --bind` 覆盖只读 rootfs 的鉴权脚本，**重启后 16 秒内自动恢复 SSH + 无线 ADB**，全程零口令、不用再碰屏幕上的调试开关；
-6. **触摸注入与 HTTP 远程调试**：自研 ARM 注入器直写 `/dev/input/event3`（设备没有 `input`/`sendevent`），配套 HTTP 服务提供 **截图 / 点击 / 滑动 / 日志** 接口，并内置一个"点屏幕即注入触摸"的网页调试面板；
+6. **触摸注入与 HTTP 远程调试（Web 模拟器）**：自研 ARM 注入器直写 `/dev/input/event3`（设备没有 `input`/`sendevent`），配套 HTTP 服务提供 **截图 / 点击 / 滑动 / 物理按键 / 日志** 接口，网页面板即一台远程模拟器 —— 人能点，**AI Agent 也能通过纯 HTTP 闭环操作界面上的元素**；
 7. **Falcon 轻应用（MiniApp）开发**：破解官方字节码得出真实入口契约，跑通界面渲染 / HTTP 联网 / 文件读写 / 声音播放四大能力；
 8. **GLM 用量查询 MiniApp**：桌面直接查看智谱 BigModel 套餐额度（5 小时窗口 / 本周 / 重置次数，多机构切换），HTTPS + 自定义请求头 + 纯 JS HMAC-SHA256 签名全部真机跑通。
 
@@ -84,7 +84,7 @@ youdao-tinglibao-e6/
 │   ├── GLM_USAGE.md        # GLM 用量查询 MiniApp（智谱套餐额度看板）
 │   ├── SCREENSHOT_AND_INPUT.md  # 真机截图与触摸注入（点击界面）完全指南
 │   ├── PERSISTENT_ACCESS.md     # 永久免密 ADB + SSH（重启后自动恢复）
-│   └── REMOTE_DEBUG.md          # HTTP 远程调试接口（截图/点击/日志）
+│   └── REMOTE_DEBUG.md          # Web 模拟器 + HTTP 远程调试（截图/点击/手势/物理键，AI 可操作）
 ├── miniapp/                # Falcon 轻应用（.amr）开发套件
 │   ├── build_miniapp.sh    # 一键构建 → 部署 → 启动 → 抓屏取证
 │   ├── e6_demo_app/        # 四合一能力演示应用（界面/联网/文件/声音）
@@ -271,31 +271,43 @@ adb connect 192.168.0.201:5555                  # 无线 ADB，零口令
 
 ---
 
-## 🌐 HTTP 远程调试接口
+## 🌐 HTTP 远程调试接口 + Web 模拟器（AI 可操作界面）
 
-不想插线、也不想开 SSH 的时候，浏览器直接开 **[`http://<ip>:8080/`](docs/REMOTE_DEBUG.md)**：
+不想插线、也不想开 SSH 的时候，浏览器直接开 **[`http://<ip>:8080/`](docs/REMOTE_DEBUG.md)**
+—— 这是一台**远程 Web 模拟器**，人能点，**AI Agent 也能通过纯 HTTP 接口操作界面元素**：
 
 - 左边是**实时屏幕**（1.5 秒自动刷新），**点画面任意位置 = 给设备注入一次点击**；
-- 右边有设备状态、日志面板（app / sound / error）、手动点击/长按/滑动；
-- 也提供纯 API：`/shot.png`、`/tap?x=&y=`、`/swipe`、`/long`、`/logs`、`/status`。
+- **物理按键卡片**：电源（含长按）、音量±、播放/暂停、上一首/下一首、Home/录音
+  —— 内核级 `EV_KEY` 注入，与实体按键完全同路；
+- **手势卡片**：上/下滑、左/右滑预设（距离、时长可调）；
+- 纯 API 一应俱全：`/shot.png`、`/tap`、`/swipe`、`/long`、`/key`、`/logs`、`/status`。
+
+**AI 操作闭环**（看屏 → 定位 → 操作 → 验证，全程可编程）：
 
 ```bash
-curl http://192.168.0.201:8080/shot.png -o shot.png
-curl "http://192.168.0.201:8080/tap?x=177&y=295"
+curl http://192.168.0.201:8080/shot.png -o now.png        # ① 看屏：坐标与触摸 1:1
+curl "http://192.168.0.201:8080/tap?x=177&y=295"          # ② 操作：点截图上量到的元素
+curl "http://192.168.0.201:8080/key?name=home"            #     物理键也能按
+curl http://192.168.0.201:8080/shot.png -o after.png      # ③ 验证：再抓屏对比
 ```
+
+> 本仓库的真实用例：GLM 用量 App 从桌面图标定位、进入应用、点刷新到验证查询结果，
+> 全程由 AI 通过这几个接口远程完成（见 [`docs/GLM_USAGE.md`](docs/GLM_USAGE.md)）。
 
 <p align="center">
   <img src="docs/images/e6_remote_home.png" width="240" alt="通过 HTTP 接口抓到的 E6 实时屏幕">
 </p>
 
 > 上图是通过 `GET /shot.png` 实时抓到的设备屏幕（18969 字节，正常渲染）。
-> 顺带记住一个判据：**PNG 恰好 318 字节 = 纯黑 = app 没渲染**，不是抓屏失败。
+> 两个判据：**PNG 恰好 318 字节 = 纯黑 = app 没渲染**；**熄屏时抓到的是随机彩噪**，
+> 先 `tap` 一下点亮再抓。
 
 服务由开机钩子拉起、看门狗守护，重启后自动恢复。
 
 > **完整文档见 [`docs/REMOTE_DEBUG.md`](docs/REMOTE_DEBUG.md)** ——
-> 含接口清单、实现要点、可选 token 鉴权、以及三条通道（HTTP / SSH / ADB）怎么选。
-> ⚠️ 这个服务能注入任意触摸，等于**完整的远程输入控制** —— 公网或公共 WiFi 下务必开 token。
+> 含 Web 模拟器详解、AI 操作闭环、物理按键 keycode 对照表、实现要点、
+> 可选 token 鉴权、以及三条通道（HTTP / SSH / ADB）怎么选。
+> ⚠️ 这个服务能注入任意触摸和按键，等于**完整的远程输入控制** —— 公网或公共 WiFi 下务必开 token。
 
 ---
 
