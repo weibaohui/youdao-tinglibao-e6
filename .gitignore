@@ -14,4 +14,5 @@ Thumbs.db
 # MiniApp build output
 miniapp/build/
 miniapp/e6_demo_app/*.js.bin
+miniapp/glm_usage_app/*.js.bin
 src/e6_debug_server/e6_debug_server

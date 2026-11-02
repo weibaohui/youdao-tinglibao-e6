@@ -21,7 +21,8 @@
 4. **原生桌面图标无缝集成**：无需替换或破坏原厂任何内置功能（如网易云音乐），通过轻应用包热注册在系统桌面上生成独立图标入口，点击即可唤醒自定义原生程序；
 5. **永久免密 ADB + SSH**：借助固件自带的开机钩子（`S99_run_test_scripts` → `/userdisk/skip_re/skip_login.sh`）与 `mount --bind` 覆盖只读 rootfs 的鉴权脚本，**重启后 16 秒内自动恢复 SSH + 无线 ADB**，全程零口令、不用再碰屏幕上的调试开关；
 6. **触摸注入与 HTTP 远程调试**：自研 ARM 注入器直写 `/dev/input/event3`（设备没有 `input`/`sendevent`），配套 HTTP 服务提供 **截图 / 点击 / 滑动 / 日志** 接口，并内置一个"点屏幕即注入触摸"的网页调试面板；
-7. **Falcon 轻应用（MiniApp）开发**：破解官方字节码得出真实入口契约，跑通界面渲染 / HTTP 联网 / 文件读写 / 声音播放四大能力。
+7. **Falcon 轻应用（MiniApp）开发**：破解官方字节码得出真实入口契约，跑通界面渲染 / HTTP 联网 / 文件读写 / 声音播放四大能力；
+8. **GLM 用量查询 MiniApp**：桌面直接查看智谱 BigModel 套餐额度（5 小时窗口 / 本周 / 重置次数，多机构切换），HTTPS + 自定义请求头 + 纯 JS HMAC-SHA256 签名全部真机跑通。
 
 ---
 
@@ -80,6 +81,7 @@ youdao-tinglibao-e6/
 │   ├── HARDWARE.md         # 硬件架构、引脚定义与 eMMC 分区表
 │   ├── ROOT_GUIDE.md       # Root 提权与 EROFS 哈希热补丁全教程
 │   ├── MINIAPP_DEV.md      # Falcon 轻应用开发完全指南（入口契约/四大能力）
+│   ├── GLM_USAGE.md        # GLM 用量查询 MiniApp（智谱套餐额度看板）
 │   ├── SCREENSHOT_AND_INPUT.md  # 真机截图与触摸注入（点击界面）完全指南
 │   ├── PERSISTENT_ACCESS.md     # 永久免密 ADB + SSH（重启后自动恢复）
 │   └── REMOTE_DEBUG.md          # HTTP 远程调试接口（截图/点击/日志）
@@ -103,6 +105,7 @@ youdao-tinglibao-e6/
     ├── e6_device.sh        # 自动解析 ADB 目标（USB 优先，否则按 MAC 找 IP）
     ├── e6_ui.sh            # 界面自动化：截图/点击/滑动/长按/日志/diff
     ├── e6_ssh_setup.sh     # 一键装好「永久免密 ADB + SSH」
+    ├── glm_usage_setup.sh  # GLM 用量 App 配置下发（API Key + JWT/org）
     ├── e6_device_scripts/  # 部署到设备上的脚本（鉴权/sshd/adbd/开机钩子）
     ├── adb_root.sh         # 以 root 执行命令（自动完成 adbd 认证）
     ├── usb_to_wifi.sh      # 插 USB 后一键切到无线 ADB
@@ -123,11 +126,14 @@ miniapp/
 │   ├── manifest.json      #   应用清单 + MD5 签名表
 │   ├── app_icon.png       #   桌面图标
 │   └── assets/beep.wav    #   应用自带音频
+├── glm_usage_app/         # GLM 用量查询（智谱套餐额度看板，见 docs/GLM_USAGE.md）
+│   ├── index.js           #   全部逻辑：纯 JS HMAC-SHA256 + 接口 + 界面
+│   └── app_icon.png       #   桌面图标（与墨水屏版同图）
 ├── host_tools/            # 构建工具链
 │   ├── qjsc               #   QuickJS 编译器（macOS arm64）
 │   ├── build_amr.py       #   .amr 打包器（自动签名 + adb 部署）
 │   └── compile_js_bin.py
-└── e6_demo_app.amr        # 构建产物
+└── build/                 # 构建产物（.amr）
 ```
 
 一键跑起来：
@@ -146,6 +152,31 @@ cd miniapp && ./build_miniapp.sh
 > **完整开发指南见 [`docs/MINIAPP_DEV.md`](docs/MINIAPP_DEV.md)** ——
 > 含入口契约（`App()` 为什么不能用）、四大能力的可用 API 形状、
 > E6 模块清单、样式白名单等，全部真机实测 + 官方字节码反汇编双重验证。
+
+### 📊 第一个实战 MiniApp：GLM 用量查询
+
+桌面图标点开即用 —— 查智谱 BigModel 套餐的 **5 小时窗口 / 本周额度**
+用量百分比、进度条、重置时间、重置次数，多机构/项目胶囊一键切换，
+60 秒自动刷新。与 Metalio 墨水屏版、Kindle 版同源接口契约（第三块屏）：
+
+```bash
+# 1. 构建 + 部署 + 启动 + 截图取证（一键）
+cd miniapp && ./build_miniapp.sh glm_usage_app
+
+# 2. 下发配置（Key 只进设备 600 权限文件，不进应用包/仓库）
+cd .. && ./tools/glm_usage_setup.sh --api-key 'xxxx.yyyy' [--jwt '一次性网页JWT']
+```
+
+<p align="center">
+  <img src="docs/images/e6_glm_usage.png" width="240" alt="GLM 用量真机截图">
+  &nbsp;&nbsp;
+  <img src="docs/images/e6_glm_desktop.png" width="240" alt="桌面上的 GLM 用量图标">
+</p>
+
+> 技术要点：E6 的 `http` 模块支持 HTTPS + 自定义请求头（真机实证）；
+> BigModel 要的短时效 HS256 JWT 用 **纯 JS SHA-256/HMAC** 现算
+> （设备无 openssl/base64 命令，签名已与 Node crypto 对拍验证）。
+> 完整文档见 [`docs/GLM_USAGE.md`](docs/GLM_USAGE.md)。
 
 ---
 
