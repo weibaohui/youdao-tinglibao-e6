@@ -94,12 +94,24 @@ export default {
 - class + `<style scoped>` 可用（weex-styler → jsonStyle，jsfm 按类名合并）；
   拿不准时用内联 `:style` 对象（camelCase，73 项白名单见 `docs/MINIAPP_DEV.md`）。
 - 页面实例上可用：`this.$page.finish()`（关页）、`this.$falcon`（框架实例）。
+- **定时器**：`setTimeout` 原生可用（jsfm 原子级），`setInterval` 未验证 ——
+  循环用递归 setTimeout 更稳（俄罗斯方块示例即此写法）。
 - **多页导航 API 未定**：jsfm 原型里有 `loadPage`，但参数形状不明且**错误调用会
   崩掉整个 miniapp 宿主**（实测）。v0.2 模板为单页；多页打包本身没问题。
+- **物理按键不可用于三方应用**（详见 `examples/tetris/README.md`）：
+  `buttonEvent` 模块可实例化但 E6 变体没有 `.on()`（导出小写 `buttonEvent`，
+  实例仅 setButtonEventReady/softButtonEvent/emitBottomSwipeBackEvent 三方法）；
+  JQSignal 属性赋值/方法名约定均不触发回调；prev/home/next/play 在系统层被
+  消费（返回导航/桌面循环/静默）。**应用输入走触屏**。
 - 部署怪癖：同 appid 的旧实例**卸载也杀不死**，`miniapp_cli start` 只会把旧实例
   调到前台 —— `e6app run` 已内置处理（盲点返回箭头使其自退 + 卸载式重装）。
   若截图仍是桌面，用 Web 模拟器（`docs/REMOTE_DEBUG.md`）点桌面图标启动。
 - 触屏单点，无捏合；截图熄屏时是彩噪（先 tap 点亮）。
+
+## 示例应用
+
+- [`examples/tetris/`](examples/tetris/README.md) —— 俄罗斯方块：7-bag、消行计分、
+  硬降、踢墙旋转、加速曲线；触屏按钮操作。真机截图与按键结论见其 README。
 
 ## 致谢
 
