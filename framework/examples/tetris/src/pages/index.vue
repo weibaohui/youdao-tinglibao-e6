@@ -20,12 +20,6 @@
       </div>
     </div>
 
-    <div class="btns">
-      <btn-key text="左" @tap="shift(-1)"></btn-key>
-      <btn-key text="右" @tap="shift(1)"></btn-key>
-      <btn-key text="转" @tap="rotate"></btn-key>
-      <btn-key text="落" @tap="hardDrop"></btn-key>
-    </div>
   </div>
 </template>
 
@@ -34,7 +28,7 @@ import UI from './e6ui.js';
 import buttonEventModule from 'buttonEvent';
 
 /* ---------- 形状定义：每种方块的基础矩阵，旋转态运行时生成 ---------- */
-const COLS = 10, ROWS = 16, CELL = 15;
+const COLS = 10, ROWS = 17, CELL = 15;
 const BASE = {
   I: { m: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], c: '#31c7ef' },
   O: { m: [[1,1],[1,1]], c: '#f7d308' },
@@ -185,21 +179,6 @@ const MyNext = {
   }
 };
 
-/* ---------- 触屏按钮（物理按键的屏幕镜像） ---------- */
-const BtnKey = {
-  props: { text: String },
-  render(h) {
-    return h('div', {
-      style: {
-        flex: 1, height: '36px', marginRight: '5px',
-        backgroundColor: '#21262d', borderRadius: '8px',
-        justifyContent: 'center', alignItems: 'center'
-      },
-      on: { click: () => this.$emit('tap') }
-    }, [h('text', { style: { color: '#c9d1d9', fontSize: '14px' } }, this.text)]);
-  }
-};
-
 function emptyBoard() {
   const b = [];
   for (let r = 0; r < ROWS; r++) {
@@ -213,8 +192,7 @@ function emptyBoard() {
 export default {
   components: {
     'my-board': MyBoard,
-    'my-next': MyNext,
-    'btn-key': BtnKey
+    'my-next': MyNext
   },
 
   data() {
@@ -467,5 +445,4 @@ export default {
 }
 .main { flex-direction: row; padding-left: 8px; padding-top: 4px; }
 .panel { padding-left: 8px; padding-top: 4px; width: 72px; }
-.btns { flex-direction: row; padding-left: 8px; padding-right: 3px; margin-top: 8px; }
 </style>
