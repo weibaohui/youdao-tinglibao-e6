@@ -6,7 +6,9 @@
     </div>
 
     <div class="main">
-      <my-board :snake="snake" :food="food" :over="over" :paused="paused"></my-board>
+      <div class="boardwrap" @touchstart="onTS" @touchend="onTE">
+        <my-board :snake="snake" :food="food" :over="over" :paused="paused"></my-board>
+      </div>
 
       <div class="panel">
         <text :style="{color:'#8b949e',fontSize:'10px'}">速度</text>
@@ -155,6 +157,38 @@ export default {
   },
 
   methods: {
+    posOf(e) {
+      try {
+        const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || e;
+        return { x: Number(t.pageX !== undefined ? t.pageX : t.x) || 0,
+                 y: Number(t.pageY !== undefined ? t.pageY : t.y) || 0 };
+      } catch (err) { return { x: 0, y: 0 }; }
+    },
+    onTS(e) {
+      const p2 = this.posOf(e);
+      this._sx = p2.x; this._sy = p2.y;
+    },
+    onTE(e) {
+      const p2 = this.posOf(e);
+      this.gesture(p2.x - (this._sx || 0), p2.y - (this._sy || 0));
+    },
+    /* 手势：四向滑动=转向（绝对方向，禁反向），点按=暂停/重开切换 */
+    gesture(dx, dy) {
+      if (this.over) { this.reset(); return; }
+      const TH = 24;
+      if (Math.abs(dx) < TH && Math.abs(dy) < TH) {
+        this.paused = !this.paused;
+        this.statusText = this.paused ? '已暂停' : '继续!';
+        return;
+      }
+      let nd;
+      if (Math.abs(dx) >= Math.abs(dy)) nd = dx < 0 ? 3 : 1;   /* 左右滑 */
+      else nd = dy < 0 ? 0 : 2;                                /* 上下滑 */
+      this.setDir(nd);
+    },
+    setDir(nd) {
+      if ((nd + 2) % 4 !== this.dir) this._nextDir = nd;
+    },
     onKey(k) {
       if (k === 'left') this.turn(-1);
       else if (k === 'right') this.turn(1);
@@ -193,8 +227,11 @@ export default {
 
     turn(d) {
       if (this.over) return;
-      /* dir+1=右转(顺时针) dir+3=左转(逆时针)；禁止 180° 掉头 */
+      /* 物理键相对转向：dir+1=右转(顺时针) dir+3=左转(逆时针)；禁止 180° 掉头 */
       const nd = (this.dir + (d < 0 ? 3 : 1)) % 4;
+      this.setDir(nd);
+    },
+    setDir(nd) {
       if ((nd + 2) % 4 !== this.dir) this._nextDir = nd;
     },
 
@@ -282,6 +319,7 @@ export default {
   padding-left: 10px; padding-right: 10px; justify-content: space-between;
 }
 .main { flex-direction: row; padding-left: 7px; padding-top: 4px; }
+.boardwrap { position: relative; }
 .panel { padding-left: 8px; padding-top: 4px; width: 72px; }
 .footer { height: 20px; padding-left: 10px; padding-top: 4px; }
 </style>

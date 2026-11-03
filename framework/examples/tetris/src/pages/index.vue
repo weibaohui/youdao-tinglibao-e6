@@ -6,7 +6,9 @@
     </div>
 
     <div class="main">
-      <my-board :board="board" :cur="cur" :ghost="ghostMap" :over="over"></my-board>
+      <div class="boardwrap" @touchstart="onTS" @touchend="onTE">
+        <my-board :board="board" :cur="cur" :ghost="ghostMap" :over="over"></my-board>
+      </div>
 
       <div class="panel">
         <text :style="{color:'#8b949e',fontSize:'10px'}">下一个</text>
@@ -444,5 +446,6 @@ export default {
   padding-left: 10px; padding-right: 10px; justify-content: space-between;
 }
 .main { flex-direction: row; padding-left: 8px; padding-top: 4px; }
+.boardwrap { position: relative; }
 .panel { padding-left: 8px; padding-top: 4px; width: 72px; }
 </style>
