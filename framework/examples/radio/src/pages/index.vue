@@ -390,13 +390,6 @@ export default {
     const self = this;
     this._sp = new soundPlayerModule.SoundPlayer();
 
-    try {
-      process.exec('sh', ['-c',
-        'P=$(find /userdisk/secondary/miniapp/data/mini_app/pkg/8090906000000007 -name e6keyed 2>/dev/null | head -1); ' +
-        '[ -n "$P" ] && cp "$P" /tmp/e6keyed && chmod 755 /tmp/e6keyed; rm -f /tmp/e6keyed.pid; ' +
-        'nohup /tmp/e6keyed >/dev/null 2>&1 </dev/null &'], { timeout: 8000 });
-    } catch (e) { console.warn('[radio] keys daemon fail ' + e); }
-
     const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
     const be = new Ctor();
     be.setButtonEventReady(true);
@@ -405,7 +398,6 @@ export default {
     be.playButtonClick = function () { self.toggle(); };
     be.homeButtonClick = function () { self.toggle(); };
 
-    this.keysLoop();
     this._wave = setInterval(function () {
       if (!self.playing) { self.bars = [0, 0, 0, 0, 0, 0, 0]; return; }
       const nb = [];
@@ -488,33 +480,7 @@ export default {
       if (Math.abs(dx) >= Math.abs(dy)) this.cut(dx < 0 ? -1 : 1);
     },
 
-    keysLoop() {
-      const self = this;
-      const tick = function () {
-        process.exec('sh', ['-c',
-          'PID=$(cat /tmp/e6keyed.pid 2>/dev/null); ' +
-          'if [ -z "$PID" ] || [ ! -d /proc/$PID ]; then ' +
-          'P=$(find /userdisk/secondary/miniapp/data/mini_app/pkg/8090906000000007 -name e6keyed 2>/dev/null | head -1); ' +
-          '[ -n "$P" ] && cp "$P" /tmp/e6keyed && chmod 755 /tmp/e6keyed; rm -f /tmp/e6keyed.pid; ' +
-          'nohup /tmp/e6keyed >/dev/null 2>&1 </dev/null & fi; ' +
-          'cat /tmp/e6keys.buf 2>/dev/null; : > /tmp/e6keys.buf; echo 1 > /tmp/e6keys.heartbeat'],
-          { timeout: 4000 }).then(function (r) {
-            const out = String((r && r.stdout) || '');
-            if (out) {
-              const acts = out.trim().split(String.fromCharCode(10));
-              for (let i = 0; i < acts.length; i++) {
-                const a = acts[i];
-                if (a === 'left') self.cut(-1);
-                else if (a === 'right') self.cut(1);
-                else if (a === 'rotate' || a === 'drop') self.toggle();
-              }
-            }
-            setTimeout(tick, 200);
-          }).catch(function () { setTimeout(tick, 400); });
-      };
-      tick();
     }
-  }
 };
 </script>
 

@@ -133,16 +133,6 @@ export default {
     const self = this;
     hs.get('high', 0).then(function (v) { if (v > 0) { self.high = v; self.statusText = '最高 ' + v; } });
 
-    /* 物理键桥（与俄罗斯方块同一 e6keyed 守护） */
-    try {
-      process.exec('sh', ['-c',
-        'P=$(find /userdisk/secondary/miniapp/data/mini_app/pkg/8090906000000006 -name e6keyed 2>/dev/null | head -1); ' +
-        '[ -n "$P" ] && cp "$P" /tmp/e6keyed && chmod 755 /tmp/e6keyed; ' +
-        'kill $(cat /tmp/e6keyed.pid 2>/dev/null) 2>/dev/null; ' +
-        'rm -f /tmp/e6keyed.pid /tmp/e6keys.buf /tmp/e6keys.heartbeat; ' +
-        'nohup /tmp/e6keyed >/dev/null 2>&1 </dev/null &'], { timeout: 8000 });
-    } catch (e) { console.warn('[snake] 守护拉起失败 ' + e); }
-
     /* E6 导出键大小写随加载时机变化，双兜底 */
     const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
     const be = new Ctor();
@@ -152,7 +142,6 @@ export default {
     be.homeButtonClick = function () { self.onKey('home'); };
     be.playButtonClick = function () { self.onKey('play'); };
 
-    this.keysLoop();
     this.loop();
   },
 
@@ -201,28 +190,6 @@ export default {
       } else if (k === 'play') {
         if (this.over) this.reset();
       }
-    },
-
-    keysLoop() {
-      const self = this;
-      const tick = function () {
-        process.exec('sh', ['-c',
-          'PID=$(cat /tmp/e6keyed.pid 2>/dev/null); ' +
-          'if [ -z "$PID" ] || [ ! -d /proc/$PID ]; then ' +
-          'P=$(find /userdisk/secondary/miniapp/data/mini_app/pkg/8090906000000006 -name e6keyed 2>/dev/null | head -1); ' +
-          '[ -n "$P" ] && cp "$P" /tmp/e6keyed && chmod 755 /tmp/e6keyed; rm -f /tmp/e6keyed.pid; ' +
-          'nohup /tmp/e6keyed >/dev/null 2>&1 </dev/null & fi; ' +
-          'cat /tmp/e6keys.buf 2>/dev/null; : > /tmp/e6keys.buf; echo 1 > /tmp/e6keys.heartbeat'],
-          { timeout: 4000 }).then(function (r) {
-            const out = String((r && r.stdout) || '');
-            if (out) {
-              const acts = out.trim().split(String.fromCharCode(10));
-              for (let i = 0; i < acts.length; i++) self.onKey(acts[i]);
-            }
-            setTimeout(tick, 150);
-          }).catch(function () { setTimeout(tick, 300); });
-      };
-      tick();
     },
 
     turn(d) {

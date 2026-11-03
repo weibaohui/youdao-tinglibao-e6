@@ -214,7 +214,16 @@ export default {
     const hs = new UI.Storage('tetris_high');
     const self = this;
     hs.get('high', 0).then(function (v) { if (v > 0) self.high = v; });
-    this.startKeys();
+    /* 物理键信号注册（JQSignal 属性赋值式，仅前台拦截，不劫持系统键） */
+    try {
+      const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
+      const be = new Ctor();
+      be.setButtonEventReady(true);
+      be.backButtonClick = () => { this.shift(-1); };
+      be.forwardButtonClick = () => { this.shift(1); };
+      be.homeButtonClick = () => { this.rotate(); };
+      be.playButtonClick = () => { this.hardDrop(); };
+    } catch (e) { console.warn('[tetris] 信号注册失败 ' + e); }
     this.nextType = this.randType();
     this.spawn();
     this.computeGhost();
@@ -222,64 +231,6 @@ export default {
   },
 
   methods: {
-    async startKeys() {
-      console.warn('[tetris] startKeys enter');
-      try {
-        await process.exec('sh', ['-c',
-          'P=$(find /userdisk/secondary/miniapp/data/mini_app/pkg/8090906000000004 -name e6keyed 2>/dev/null | head -1); ' +
-          '[ -n "$P" ] && cp "$P" /tmp/e6keyed && chmod 755 /tmp/e6keyed; ' +
-          'kill $(cat /tmp/e6keyed.pid 2>/dev/null) 2>/dev/null; ' +
-          'rm -f /tmp/e6keyed.pid /tmp/e6keys.buf /tmp/e6keys.heartbeat'],
-          { timeout: 8000 });
-        console.warn('[tetris] extract done');
-        await process.exec('/tmp/e6keyed', [], { timeout: 5000 });
-        console.warn('[tetris] e6keyed 已拉起');
-      } catch (e) {
-        console.warn('[tetris] 守护拉起失败: ' + e);
-      }
-      /* 物理键信号注册（JQSignal 属性赋值式） */
-      try {
-        const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
-        const be = new Ctor();
-        be.setButtonEventReady(true);
-        be.backButtonClick = (a) => { console.warn('[tetris] BACK fired arg=[' + String(a).slice(0, 16) + ']'); this.shift(-1); };
-        be.forwardButtonClick = (a) => { console.warn('[tetris] FWD fired arg=[' + String(a).slice(0, 16) + ']'); this.shift(1); };
-        be.homeButtonClick = (a) => { console.warn('[tetris] HOME fired'); this.rotate(); };
-        be.playButtonClick = (a) => { console.warn('[tetris] PLAY fired'); this.hardDrop(); };
-        console.warn('[tetris] 信号已注册（属性赋值式）');
-      } catch (e) {
-        this.dbg = 'T=' + (typeof buttonEventModule) + ' K=' + (function () {
-          try { return Object.keys(buttonEventModule).join('|'); } catch (e2) { return 'ERR'; }
-        })();
-        console.warn('[tetris] 模块形状 ' + this.dbg);
-        console.warn('[tetris] 信号注册失败 ' + e);
-      }
-      this.keysLoop();
-    },
-
-    keysLoop() {
-      const self = this;
-      const tick = function () {
-        if (self._keysDead) return;
-        process.exec('sh', ['-c',
-          'cat /tmp/e6keys.buf 2>/dev/null; : > /tmp/e6keys.buf; echo 1 > /tmp/e6keys.heartbeat'],
-          { timeout: 4000 }).then(function (r) {
-            const out = String((r && r.stdout) || '');
-            if (out) {
-              const acts = out.trim().split(String.fromCharCode(10));
-              for (let i = 0; i < acts.length; i++) {
-                const a = acts[i];
-                if (a === 'left') self.shift(-1);
-                else if (a === 'right') self.shift(1);
-                else if (a === 'rotate') self.rotate();
-                else if (a === 'drop') self.hardDrop();
-              }
-            }
-            setTimeout(tick, 150);
-          }).catch(function () { setTimeout(tick, 300); });
-      };
-      tick();
-    },
 
     randType() {
       return TYPES[Math.floor(Math.random() * TYPES.length)];
