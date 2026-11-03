@@ -214,6 +214,20 @@ export default {
     const hs = new UI.Storage('tetris_high');
     const self = this;
     hs.get('high', 0).then(function (v) { if (v > 0) self.high = v; });
+
+    /* M1：动态 import 触发框架 dlopen libs/libjsapi_e6keys*.so */
+    import('e6keys').then(function (m) {
+      console.warn('[tetris] e6keys module loaded!');
+    }).catch(function (e) {
+      console.warn('[tetris] e6keys import fail: ' + e);
+    });
+
+    /* M1 实验：动态 import 触发框架加载 libs/libjsapi_e6keys.so */
+    import('e6keys').then(function (m) {
+      console.warn('[tetris] e6keys module loaded!');
+    }).catch(function (e) {
+      console.warn('[tetris] e6keys import fail: ' + e);
+    });
     /* 物理键信号注册（JQSignal 属性赋值式，仅前台拦截，不劫持系统键） */
     try {
       const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
