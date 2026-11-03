@@ -1,11 +1,13 @@
 <template>
   <div class="page">
     <div class="header">
+      <div class="hotzone" @click="cut(-1)"><text :style="{color:'#8b949e',fontSize:'14px'}">‹</text></div>
       <text :style="{color:'#ffffff',fontSize:'13px',fontWeight:'bold'}">收音机</text>
       <text :style="{color:'#8b949e',fontSize:'11px'}">{{ idx + 1 }}/{{ total }}</text>
+      <div class="hotzone" @click="exitApp"><text :style="{color:'#8b949e',fontSize:'13px'}">✕</text></div>
     </div>
 
-    <div class="main" @touchstart="onTS" @touchend="onTE">
+    <div class="main" @click="toggle">
       <text :style="{color:'#e3b341',fontSize:'10px'}">{{ stateText }}</text>
       <text :style="{color:'#ffffff',fontSize:'19px',fontWeight:'bold',marginTop:'10px'}">{{ stName }}</text>
       <text :style="{color:'#8b949e',fontSize:'9px',marginTop:'6px'}">{{ stUrl }}</text>
@@ -414,6 +416,18 @@ export default {
       };
     },
 
+    exitApp() {
+      /* 退出：删模式文件（守护立即释放按键）+ 关页 */
+      process.exec('sh', ['-c', 'rm -f /tmp/e6keys.mode /tmp/e6keyed.pid']);
+      if (this.$page && this.$page.finish) this.$page.finish();
+    },
+
+    touchMode() {
+      /* 刷新模式文件：守护存活期内持续生效 */
+      process.exec('sh', ['-c',
+        "echo '{"158":[25,16],"159":[215,16],"207":[120,160],"139":[120,160]}' > /tmp/e6keys.mode"]);
+    },
+
     cut(d) {
       const n = this.STATIONS.length;
       this.idx = (this.idx + d + n) % n;
@@ -461,25 +475,6 @@ export default {
       }
     },
 
-    posOf(e) {
-      try {
-        const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || e;
-        return { x: Number(t.pageX !== undefined ? t.pageX : t.x) || 0,
-                 y: Number(t.pageY !== undefined ? t.pageY : t.y) || 0 };
-      } catch (err) { return { x: 0, y: 0 }; }
-    },
-    onTS(e) {
-      const p2 = this.posOf(e);
-      this._sx = p2.x; this._sy = p2.y;
-    },
-    onTE(e) {
-      const p2 = this.posOf(e);
-      const dx = p2.x - (this._sx || 0), dy = p2.y - (this._sy || 0);
-      const TH = 30;
-      if (Math.abs(dx) < TH && Math.abs(dy) < TH) { this.toggle(); return; }
-      if (Math.abs(dx) >= Math.abs(dy)) this.cut(dx < 0 ? -1 : 1);
-    },
-
     }
 };
 </script>
@@ -488,7 +483,10 @@ export default {
 .page { background-color: #0d1117; }
 .header {
   height: 22px; flex-direction: row; align-items: center;
-  padding-left: 10px; padding-right: 10px; justify-content: space-between;
+  padding-left: 4px; padding-right: 4px; justify-content: space-between;
+}
+.hotzone {
+  width: 30px; height: 22px; justifyContent: center; alignItems: center;
 }
 .main { padding: 10px; }
 .wave { flex-direction: row; align-items: flex-end; margin-top: 14px; height: 18px; }
