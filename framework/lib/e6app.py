@@ -150,6 +150,9 @@ def cmd_build(args):
     assets = proj / "assets"
     if assets.exists():
         shutil.copytree(assets, staging / "assets")
+    libs = proj / "libs"
+    if libs.exists():
+        shutil.copytree(libs, staging / "libs")
     shutil.copy(manifest_p, staging / "manifest.json")
 
     # 4) qjsc 编译 + cert 签名 + .amr 打包（复用 miniapp/host_tools）

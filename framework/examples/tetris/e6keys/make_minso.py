@@ -99,7 +99,7 @@ dynsym += struct.pack(
     0,                             # st_size
     (STB_GLOBAL << 4) | STT_FUNC,  # st_info
     0,                             # st_other
-    SHN_ABS,                       # st_shndx
+    1,                             # st_shndx（指向第一个 LOAD 对应的 section）
 )
 
 # ---------------- .dynamic ----------------
