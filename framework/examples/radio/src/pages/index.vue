@@ -23,7 +23,7 @@
       </div>
       <text class="stname-big">{{ stName }}</text>
 
-      <!-- 宽幅频谱区：双击切换动效（镜像 / 经典 / 点阵 / 山峰 / 波峰） -->
+      <!-- 宽幅频谱区：双击切换动效（镜像 / 经典 / 点阵 / 山峰 / 波峰 / 圆环 / 瀑布 / 粒子） -->
       <div class="specwrap" @click="onSpecTap">
         <div v-if="vizStyle===0" class="specB">
           <div v-for="i in colIdx" :key="i" class="specB-col">
@@ -47,10 +47,31 @@
             </div>
           </div>
         </div>
-        <div v-else class="specB-wave">
+        <div v-else-if="vizStyle===4" class="specB-wave">
           <div v-for="i in colIdx" :key="i" class="specB-col">
             <div class="specB-up"><div :style="waveUpStyle(i)"></div></div>
             <div class="specB-dn"><div :style="dnStyleB(i)"></div></div>
+          </div>
+        </div>
+        <div v-else-if="vizStyle===5" class="specB-radial">
+          <div class="radial-center"></div>
+          <div v-for="i in colIdx" :key="i" class="radial-col" :style="radialColStyle(i)">
+            <div v-for="s in radialSegIdx" :key="s" :style="radialDotStyle(i, s)"></div>
+          </div>
+        </div>
+        <div v-else-if="vizStyle===6" class="specB-fall">
+          <div v-for="r in fallRowIdx" :key="r" class="fall-row">
+            <div v-for="i in colIdx" :key="i" class="fall-col">
+              <div v-for="s in fallSegIdx" :key="s" :style="fallDotStyle(i, r, s)"></div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="specB-classic">
+          <div v-for="i in colIdx" :key="i" class="specB-classic-col">
+            <div class="partcol">
+              <div v-for="s in partSegIdx" :key="s" :style="partDotStyle(i, s)"></div>
+              <div :style="classicStyleB(i)"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -2056,6 +2077,10 @@ export default {
       favs: {},
       vizStyle: 0,
       colIdx: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+      radialSegIdx: [3,2,1,0],
+      fallRowIdx: [0,1,2,3],
+      fallSegIdx: [3,2,1,0],
+      partSegIdx: [3,2,1,0],
       segIdx: [10,9,8,7,6,5,4,3,2,1,0],
       rn: ROW_NAME,
       rs: ROW_NAME_SEL,
@@ -2071,6 +2096,7 @@ export default {
     /* 彩虹 LUT（music_vibe 色带思路：HSV 色相扫过 绿→黄→橙→红→品红，
        S/V 压在 0.85/0.95，艳丽但不刺眼；列色固定不变，每帧只改高度） */
     this._lut = [];
+    this._lutRgb = [];
     for (let k = 0; k < 16; k++) {
       const h = (210 + k * 20) % 360, s = 0.85, v = 0.95;
       const c = v * (1 - s), f = h / 60 % 1, x = v * (1 - s * f);
@@ -2083,7 +2109,9 @@ export default {
       }
       const to2 = function (n) { return ('0' + Math.round(n * 255).toString(16)).slice(-2); };
       this._lut.push('#' + to2(rgb[0]) + to2(rgb[1]) + to2(rgb[2]));
+      this._lutRgb.push([Math.round(rgb[0] * 255), Math.round(rgb[1] * 255), Math.round(rgb[2] * 255)]);
     }
+    this._specHist = [];   // 瀑布历史帧（每帧 unshift 当前 spec，保留 3 帧）
 
     /* 读收藏（/userdisk/radio_fav.txt，逗号分隔的台号） */
     try {
@@ -2147,6 +2175,9 @@ export default {
         sm.push((l + 2 * next[j] + r2) / 4);
       }
       self.spec = sm;
+      // 瀑布历史：unshift 当前帧，保留最近 3 帧
+      self._specHist.unshift(sm.slice());
+      if (self._specHist.length > 3) self._specHist.length = 3;
       // 峰值：只升不降（命中新高即顶），每帧缓降 0.025
       const pk = [];
       for (let k2 = 0; k2 < 16; k2++) {
@@ -2159,12 +2190,12 @@ export default {
 
   methods: {
     /* 动效样式名（双击频谱区循环切换） */
-    vizText() { return ['镜像', '经典', '点阵', '山峰', '波峰'][this.vizStyle]; },
+    vizText() { return ['镜像', '经典', '点阵', '山峰', '波峰', '圆环', '瀑布', '粒子'][this.vizStyle]; },
 
     onSpecTap() {
       const now = Date.now();
       if (now - (this._lastSpecTap || 0) < 500) {
-        this.vizStyle = (this.vizStyle + 1) % 5;
+        this.vizStyle = (this.vizStyle + 1) % 8;
       }
       this._lastSpecTap = now;
     },
@@ -2225,6 +2256,51 @@ export default {
         width: '9px', height: (4 + Math.round(v * 76)) + 'px',
         backgroundColor: this.playing ? this._lut[i] : '#21262d',
         borderTopLeftRadius: '3px', borderTopRightRadius: '3px'
+      };
+    },
+
+    /* 圆环：16 列绝对定位均布一圈，每列 4 段从内向外点亮 */
+    radialColStyle(i) {
+      const cx = 80, cy = 80, r = 62;
+      const a = (i / 16) * 2 * Math.PI - Math.PI / 2;   // 从顶部开始顺时针
+      const x = cx + r * Math.cos(a) - 7;   // 列宽 14，半宽 7
+      const y = cy + r * Math.sin(a) - 7;
+      return { position: 'absolute', left: x + 'px', top: y + 'px' };
+    },
+
+    radialDotStyle(i, s) {
+      const lit = this.playing && s < Math.round(this.spec[i] * 4);
+      return {
+        width: '10px', height: '10px', borderRadius: '5px',
+        backgroundColor: lit ? this._lut[i] : '#21262d'
+      };
+    },
+
+    /* 瀑布：4 行历史（row0 最新），亮度按行递减 */
+    fallDotStyle(i, r, s) {
+      const hist = r === 0 ? this.spec : (this._specHist && this._specHist[r - 1]) || [];
+      const v = hist[i] || 0;
+      const lit = this.playing && s < Math.round(v * 4);
+      const dim = [1, 0.75, 0.5, 0.3][r];
+      let bg = '#21262d';
+      if (lit) {
+        const c = this._lutRgb ? this._lutRgb[i] : null;
+        if (c) {
+          bg = 'rgb(' + Math.round(c[0] * dim) + ',' + Math.round(c[1] * dim) + ',' + Math.round(c[2] * dim) + ')';
+        } else {
+          bg = this._lut[i];
+        }
+      }
+      return { width: '9px', height: '9px', borderRadius: '2px', backgroundColor: bg };
+    },
+
+    /* 粒子：柱顶撒 0-4 颗小点，点亮数 = round(v*4) */
+    partDotStyle(i, s) {
+      const lit = this.playing && s < Math.round(this.spec[i] * 4);
+      return {
+        width: '4px', height: '4px', borderRadius: '2px',
+        backgroundColor: lit ? this._lut[i] : '#21262d',
+        marginBottom: '3px'
       };
     },
 
@@ -2464,6 +2540,31 @@ export default {
 .specB-dots-col { width: 14px; height: 108px; align-items: center; justify-content: space-between; }
 .specB-wave { flex-direction: row; justify-content: space-between; padding-left: 8px; padding-right: 8px; }
 .peakcol { align-items: center; justify-content: flex-end; }
+
+/* 圆环：160×160 容器居中，16 列绝对定位均布 */
+.specB-radial {
+  width: 160px; height: 160px; margin-left: 40px;
+  position: relative;
+}
+.radial-center {
+  position: absolute; left: 60px; top: 60px;
+  width: 40px; height: 40px; border-radius: 20px;
+  background-color: #161b22;
+}
+.radial-col {
+  width: 14px; height: 14px; justify-content: center; align-items: center;
+}
+
+/* 瀑布：4 行历史，每行 16 列 */
+.specB-fall { flex-direction: column; }
+.fall-row {
+  flex-direction: row; justify-content: space-between;
+  padding-left: 8px; padding-right: 8px; height: 28px;
+}
+.fall-col { width: 14px; align-items: center; justify-content: space-between; }
+
+/* 粒子：柱顶 4 颗小点 + 经典柱 */
+.partcol { align-items: center; justify-content: flex-end; }
 
 /* 上下台提示 */
 .dial-hint {
