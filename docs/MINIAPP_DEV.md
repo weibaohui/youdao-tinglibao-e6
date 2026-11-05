@@ -195,6 +195,17 @@ export default {
 `input` `textarea` `canvas` `qrcode` `richtext` `lottie` `hole` `modal`
 `latex` `ocr-preview` `surface`
 
+**模板指令实测**（2026-11-06，探针工程 framework/examples/listtest）：
+`v-for`（含嵌套、`:key`）、`v-if` / `v-else-if` / `v-else`、`{{ }}` 插值、
+`@click`、`@input` 均可用。`scroller` 内放 `v-for` 长列表原生滑动手势
+滚动正常（收音机 1908 行、探针压测 2500 行均无压力，无需窗口化渲染）；`input` 点击弹出系统输入法（中/英/数字/语音），`@input` 事件回传
+`{value, cursor, type}`。输入法弹出时页面可视区被压缩（固定 320px 高度的布局
+底部会被键盘遮住，flex:1 区域收缩，属正常）。
+
+**音频格式实测**（2026-11-06，探针工程 framework/examples/fmtprobe，判活证据=SoundPlayer 进程
+`/proc/<pid>/stat` utime+stime 增量）：`soundPlayer.playOnlineAudio` 支持 **MP3 / AAC / AAC+ / HLS(m3u8)**；
+**不跟随 HTTP 302 重定向**（streamtheworld 类 livestream-redirect 地址放不出来，须用解析后的最终地址）。
+
 **样式只有 73 项白名单**：禁止 `calc()`、`display:grid`、`white-space`、
 `aspectRatio`（填 0 会 Yoga 除零崩溃）。文本省略用 `<text>` 的
 `lines: 1` + `text-overflow: ellipsis`。
@@ -370,6 +381,32 @@ app.js.bin          # QuickJS 字节码，第 0 字节必须是 0x01
 index.js.bin
 app_icon.png
 assets/beep.wav
+```
+
+### 6.1 桌面图标规范（house style）
+
+156×160 缩到桌面实际尺寸后纯图形极易认错，**图标顶部一律带中文标题**：
+
+| 元素 | 规格 |
+| :--- | :--- |
+| 画布 | 156×160，圆角外透明 |
+| 圆角矩形 | radius=14，填充 `#0d1117`，2px 描边 `#3d4451` |
+| 标题 | 顶部一行中文，PingFang SC Semibold，34px |
+| 图形 | 标题下方一枚与 App 主题对应的矢量图形 |
+
+用 `tools/gen_app_icon.py` 生成（超采样 4× 后 LANCZOS 缩回，抗锯齿干净）：
+
+```bash
+python3 tools/gen_app_icon.py radio            # 覆盖 framework/examples/radio/app_icon.png
+python3 tools/gen_app_icon.py radio --preview  # 另存一份到 docs/images/
+```
+
+换图标后必须**先卸载再安装**，否则桌面会沿用旧图标缓存：
+
+```bash
+adb -s $D shell 'miniapp_cli uninstall 8090906000000007'
+adb -s $D push dist/8090906000000007.amr /tmp/radio.amr
+adb -s $D shell 'miniapp_cli install /tmp/radio.amr'
 ```
 
 编译命令（`miniapp/host_tools/qjsc` 是 macOS arm64 版）：

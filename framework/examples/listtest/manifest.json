@@ -1,0 +1,28 @@
+{
+ "appName": "列表测试",
+ "version": "1.0.0",
+ "appid": "8090906000000099",
+ "icon": "app_icon.png",
+ "quickjs": {
+  "version": "20200705",
+  "bigNum": false
+ },
+ "meta": {
+  "otaVersion": "4.5.0"
+ },
+ "props": {
+  "supportUnInstall": true,
+  "supportCleanUp": true,
+  "addDesktop": {
+   "apollo_platform": true,
+   "y08_platform": true,
+   "hermes_platform": true
+  },
+  "Icons": {
+   "theme-apollo": "app_icon.png",
+   "theme-hermes": "app_icon.png",
+   "theme-y08": "app_icon.png"
+  }
+ },
+ "cert": {}
+}
