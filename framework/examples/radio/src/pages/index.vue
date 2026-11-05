@@ -13,7 +13,7 @@
       </div>
       <div class="hairline"></div>
 
-      <!-- 状态 + 台名 -->
+      <!-- 状态 + 大台名 -->
       <div class="statusrow">
         <div class="status-left">
           <div :style="{width:'6px',height:'6px',borderRadius:'3px',backgroundColor:stateColor,marginRight:'5px'}"></div>
@@ -21,33 +21,32 @@
         </div>
         <text :style="{color:'#484f58',fontSize:'10px'}">{{ vizText() }}</text>
       </div>
-      <text class="stname">{{ stName }}</text>
+      <text class="stname-big">{{ stName }}</text>
 
-      <!-- 频谱区：双击切换动效（镜像 / 经典 / 点阵） -->
+      <!-- 宽幅频谱区：双击切换动效（镜像 / 经典 / 点阵） -->
       <div class="specwrap" @click="onSpecTap">
-        <div v-if="vizStyle===0" class="spec">
-          <div v-for="i in colIdx" :key="i" class="spec-col">
-            <div class="spec-up"><div :style="upStyle(i)"></div></div>
-            <div class="spec-dn"><div :style="dnStyle(i)"></div></div>
+        <div v-if="vizStyle===0" class="specB">
+          <div v-for="i in colIdx" :key="i" class="specB-col">
+            <div class="specB-up"><div :style="upStyleB(i)"></div></div>
+            <div class="specB-dn"><div :style="dnStyleB(i)"></div></div>
           </div>
         </div>
-        <div v-else-if="vizStyle===1" class="specC">
-          <div v-for="i in colIdx" :key="i" class="specC-col"><div :style="classicStyle(i)"></div></div>
+        <div v-else-if="vizStyle===1" class="specB-classic">
+          <div v-for="i in colIdx" :key="i" class="specB-classic-col"><div :style="classicStyleB(i)"></div></div>
         </div>
-        <div v-else class="specD">
-          <div v-for="i in colIdx" :key="i" class="specD-col">
-            <div v-for="s in segIdx" :key="s" :style="dotStyle(i, s)"></div>
+        <div v-else class="specB-dots">
+          <div v-for="i in colIdx" :key="i" class="specB-dots-col">
+            <div v-for="s in segIdx" :key="s" :style="dotStyleB(i, s)"></div>
           </div>
         </div>
       </div>
 
-      <!-- 电台转盘：当前台高亮（点开列表），上下各 1 台点按跳台 -->
-      <div class="dial">
-        <div :style="dialRowStyle(-1)" @click="cut(-1)"><text :style="dialTextStyle(-1)">{{ dialName(-1) }}</text></div>
-        <div class="hairline"></div>
-        <div :style="dialRowStyle(0)" @click="openList"><text :style="dialTextStyle(0)">{{ dialName(0) }}</text></div>
-        <div class="hairline"></div>
-        <div :style="dialRowStyle(1)" @click="cut(1)"><text :style="dialTextStyle(1)">{{ dialName(1) }}</text></div>
+      <!-- 上下台提示：点按跳台 -->
+      <div class="dial-hint" @click="cut(-1)">
+        <text :style="{color:'#484f58',fontSize:'11px'}">▲  {{ dialName(-1) }}</text>
+      </div>
+      <div class="dial-hint" @click="cut(1)">
+        <text :style="{color:'#484f58',fontSize:'11px'}">▼  {{ dialName(1) }}</text>
       </div>
 
       <div class="hairline"></div>
@@ -2035,14 +2034,14 @@ export default {
       playing: false,
       stateText: '按播放键开始收听',
       stateColor: '#8b949e',
-      spec: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      spec: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       view: 'main',
       tab: 'all',
       kw: '',
       favs: {},
       vizStyle: 0,
-      colIdx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-      segIdx: [6, 5, 4, 3, 2, 1, 0],
+      colIdx: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+      segIdx: [10,9,8,7,6,5,4,3,2,1,0],
       rn: ROW_NAME,
       rs: ROW_NAME_SEL,
       pg: 0
@@ -2057,8 +2056,8 @@ export default {
     /* 彩虹 LUT（music_vibe 色带思路：HSV 色相扫过 绿→黄→橙→红→品红，
        S/V 压在 0.85/0.95，艳丽但不刺眼；列色固定不变，每帧只改高度） */
     this._lut = [];
-    for (let k = 0; k < 10; k++) {
-      const h = (210 + k * 30) % 360, s = 0.85, v = 0.95;
+    for (let k = 0; k < 16; k++) {
+      const h = (210 + k * 20) % 360, s = 0.85, v = 0.95;
       const c = v * (1 - s), f = h / 60 % 1, x = v * (1 - s * f);
       const y = v * (1 - s * (1 - f));
       let rgb;
@@ -2113,12 +2112,12 @@ export default {
       if (!self.playing) {
         let idle = true;
         const rst = [];
-        for (let i = 0; i < 10; i++) { if (cur[i] > 0.02) idle = false; rst.push(0); }
+        for (let i = 0; i < 16; i++) { if (cur[i] > 0.02) idle = false; rst.push(0); }
         if (!idle) self.spec = rst;   // 停播后一次性归零，之后不再触发重渲染
         return;
       }
       const next = [];
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 16; i++) {
         const r = Math.random();
         const target = r * r;                 // 平方偏置：常态低位、偶发冲顶
         // 快攻慢放（music_vibe：命中即顶、每帧 ×0.86 缓落），律动更像音乐
@@ -2126,9 +2125,9 @@ export default {
       }
       // 相邻平滑：独奏变波浪，视觉上更像真实频谱
       const sm = [];
-      for (let j = 0; j < 10; j++) {
+      for (let j = 0; j < 16; j++) {
         const l = j > 0 ? next[j - 1] : next[j];
-        const r2 = j < 9 ? next[j + 1] : next[j];
+        const r2 = j < 15 ? next[j + 1] : next[j];
         sm.push((l + 2 * next[j] + r2) / 4);
       }
       self.spec = sm;
@@ -2147,21 +2146,40 @@ export default {
       this._lastSpecTap = now;
     },
 
-    /* 经典单边上柱 */
-    classicStyle(i) {
+    /* 宽幅镜像频谱（B 方案）：上柱 80px 容器，下柱 32px，列宽 9px（16 列细致版） */
+    upStyleB(i) {
       const v = this.spec[i];
       return {
-        width: '12px', height: (4 + Math.round(v * 96)) + 'px',
+        width: '9px', height: (4 + Math.round(v * 76)) + 'px',
         backgroundColor: this.playing ? this._lut[i] : '#21262d',
-        borderTopLeftRadius: '5px', borderTopRightRadius: '5px'
+        borderTopLeftRadius: '3px', borderTopRightRadius: '3px'
       };
     },
 
-    /* LED 点阵：每列 7 段（segIdx 从顶 6 到底 0），点亮数 = round(v*7) */
-    dotStyle(i, s) {
-      const lit = this.playing && s < Math.round(this.spec[i] * 7);
+    dnStyleB(i) {
+      const v = this.spec[i];
       return {
-        width: '12px', height: '9px', borderRadius: '2px',
+        width: '9px', height: (2 + Math.round(v * 30)) + 'px',
+        backgroundColor: this.playing ? this._lut[i] : '#21262d',
+        borderBottomLeftRadius: '2px', borderBottomRightRadius: '2px'
+      };
+    },
+
+    /* 经典单边上柱（B 宽幅） */
+    classicStyleB(i) {
+      const v = this.spec[i];
+      return {
+        width: '9px', height: (4 + Math.round(v * 104)) + 'px',
+        backgroundColor: this.playing ? this._lut[i] : '#21262d',
+        borderTopLeftRadius: '3px', borderTopRightRadius: '3px'
+      };
+    },
+
+    /* LED 点阵（B 宽幅）：每列 11 段（segIdx 顶 10 到底 0），段高 9px，点亮数 = round(v*11) */
+    dotStyleB(i, s) {
+      const lit = this.playing && s < Math.round(this.spec[i] * 11);
+      return {
+        width: '9px', height: '9px', borderRadius: '2px',
         backgroundColor: lit ? this._lut[i] : '#21262d'
       };
     },
@@ -2279,46 +2297,10 @@ export default {
       } catch (e) { /* ignore */ }
     },
 
-    /* 对称频谱：上半柱从中心线向上长，下半柱向下长（0.55 倍），列色=彩虹 LUT */
-    upStyle(i) {
-      const v = this.spec[i];
-      return {
-        width: '12px', height: (3 + Math.round(v * 49)) + 'px',
-        backgroundColor: this.playing ? this._lut[i] : '#21262d',
-        borderTopLeftRadius: '5px', borderTopRightRadius: '5px'
-      };
-    },
-
-    dnStyle(i) {
-      const v = this.spec[i];
-      return {
-        width: '12px', height: (2 + Math.round(v * 27)) + 'px',
-        backgroundColor: this.playing ? this._lut[i] : '#21262d',
-        borderBottomLeftRadius: '5px', borderBottomRightRadius: '5px'
-      };
-    },
-
-    /* 电台转盘：offset 相对当前台（0=当前，±1 为相邻台） */
+    /* 电台转盘：offset 相对当前台（±1 为相邻台，供提示文字用） */
     dialName(off) {
       const n = this.STATIONS.length;
       return this.STATIONS[(this.idx + off + n) % n].n;
-    },
-
-    dialRowStyle(off) {
-      return {
-        height: '21px', justifyContent: 'center',
-        paddingLeft: '12px', paddingRight: '12px',
-        backgroundColor: off === 0 ? '#1f6feb' : '#0b0e14'
-      };
-    },
-
-    dialTextStyle(off) {
-      return {
-        color: off === 0 ? '#ffffff' : '#8b949e',
-        fontSize: off === 0 ? '13px' : '11px',
-        fontWeight: off === 0 ? 'bold' : 'normal',
-        lines: 1, textOverflow: 'ellipsis'
-      };
     },
 
     exitApp() {
@@ -2411,31 +2393,36 @@ export default {
   padding-left: 12px; padding-right: 12px;
 }
 .status-left { flex-direction: row; align-items: center; }
-.stname {
-  margin-top: 4px; color: #ffffff; font-size: 20px; font-weight: bold;
+.stname-big {
+  margin-top: 6px; color: #ffffff; font-size: 22px; font-weight: bold;
   text-align: center; lines: 1; text-overflow: ellipsis;
   padding-left: 10px; padding-right: 10px;
 }
 
-/* 频谱区：吃满剩余高度，10 列均布全宽，(240-20内边距)/10 = 22 列宽 */
+/* 宽幅频谱区：吃满剩余高度，10 列均布，(240-16)/10 ≈ 22 列宽 */
 .specwrap { flex: 1; justify-content: center; }
-.spec {
+.specB {
   flex-direction: row; justify-content: space-between;
-  padding-left: 10px; padding-right: 10px;
+  padding-left: 8px; padding-right: 8px;
 }
-.spec-col { width: 22px; align-items: center; }
-.spec-up { height: 52px; justify-content: flex-end; }
-.spec-dn { height: 34px; }
-.specC {
+.specB-col { width: 14px; align-items: center; }
+.specB-up { height: 80px; justify-content: flex-end; }
+.specB-dn { height: 32px; }
+.specB-classic {
   flex-direction: row; justify-content: space-between; align-items: flex-end;
-  padding-left: 10px; padding-right: 10px; height: 104px;
+  padding-left: 8px; padding-right: 8px; height: 112px;
 }
-.specC-col { width: 22px; height: 104px; align-items: center; justify-content: flex-end; }
-.specD {
+.specB-classic-col { width: 14px; height: 112px; align-items: center; justify-content: flex-end; }
+.specB-dots {
   flex-direction: row; justify-content: space-between;
-  padding-left: 10px; padding-right: 10px;
+  padding-left: 8px; padding-right: 8px;
 }
-.specD-col { width: 22px; height: 90px; align-items: center; justify-content: space-between; }
+.specB-dots-col { width: 14px; height: 108px; align-items: center; justify-content: space-between; }
+
+/* 上下台提示 */
+.dial-hint {
+  height: 22px; justify-content: center; align-items: center;
+}
 
 /* 列表页 */
 .tabbar { flex-direction: row; margin-top: 8px; padding-left: 8px; padding-right: 8px; }
