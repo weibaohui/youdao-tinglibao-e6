@@ -23,7 +23,7 @@
       </div>
       <text class="stname-big">{{ stName }}</text>
 
-      <!-- 宽幅频谱区：双击切换动效（镜像 / 经典 / 点阵） -->
+      <!-- 宽幅频谱区：双击切换动效（镜像 / 经典 / 点阵 / 山峰 / 波峰） -->
       <div class="specwrap" @click="onSpecTap">
         <div v-if="vizStyle===0" class="specB">
           <div v-for="i in colIdx" :key="i" class="specB-col">
@@ -34,9 +34,23 @@
         <div v-else-if="vizStyle===1" class="specB-classic">
           <div v-for="i in colIdx" :key="i" class="specB-classic-col"><div :style="classicStyleB(i)"></div></div>
         </div>
-        <div v-else class="specB-dots">
+        <div v-else-if="vizStyle===2" class="specB-dots">
           <div v-for="i in colIdx" :key="i" class="specB-dots-col">
             <div v-for="s in segIdx" :key="s" :style="dotStyleB(i, s)"></div>
+          </div>
+        </div>
+        <div v-else-if="vizStyle===3" class="specB-classic">
+          <div v-for="i in colIdx" :key="i" class="specB-classic-col">
+            <div class="peakcol">
+              <div :style="peakStyleB(i)"></div>
+              <div :style="classicStyleB(i)"></div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="specB-wave">
+          <div v-for="i in colIdx" :key="i" class="specB-col">
+            <div class="specB-up"><div :style="waveUpStyle(i)"></div></div>
+            <div class="specB-dn"><div :style="dnStyleB(i)"></div></div>
           </div>
         </div>
       </div>
@@ -2035,6 +2049,7 @@ export default {
       stateText: '按播放键开始收听',
       stateColor: '#8b949e',
       spec: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      peak: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       view: 'main',
       tab: 'all',
       kw: '',
@@ -2112,8 +2127,9 @@ export default {
       if (!self.playing) {
         let idle = true;
         const rst = [];
-        for (let i = 0; i < 16; i++) { if (cur[i] > 0.02) idle = false; rst.push(0); }
-        if (!idle) self.spec = rst;   // 停播后一次性归零，之后不再触发重渲染
+        const rst2 = [];
+        for (let i = 0; i < 16; i++) { if (cur[i] > 0.02) idle = false; rst.push(0); rst2.push(0); }
+        if (!idle) { self.spec = rst; self.peak = rst2; }   // 停播后一次性归零
         return;
       }
       const next = [];
@@ -2131,17 +2147,24 @@ export default {
         sm.push((l + 2 * next[j] + r2) / 4);
       }
       self.spec = sm;
+      // 峰值：只升不降（命中新高即顶），每帧缓降 0.025
+      const pk = [];
+      for (let k2 = 0; k2 < 16; k2++) {
+        const p0 = self.peak[k2] || 0;
+        pk.push(sm[k2] > p0 ? sm[k2] : Math.max(0, p0 - 0.025));
+      }
+      self.peak = pk;
     }, 80);
   },
 
   methods: {
     /* 动效样式名（双击频谱区循环切换） */
-    vizText() { return ['镜像', '经典', '点阵'][this.vizStyle]; },
+    vizText() { return ['镜像', '经典', '点阵', '山峰', '波峰'][this.vizStyle]; },
 
     onSpecTap() {
       const now = Date.now();
       if (now - (this._lastSpecTap || 0) < 500) {
-        this.vizStyle = (this.vizStyle + 1) % 3;
+        this.vizStyle = (this.vizStyle + 1) % 5;
       }
       this._lastSpecTap = now;
     },
@@ -2181,6 +2204,27 @@ export default {
       return {
         width: '9px', height: '9px', borderRadius: '2px',
         backgroundColor: lit ? this._lut[i] : '#21262d'
+      };
+    },
+
+    /* 山峰（经典+峰帽）：柱体同经典，顶部挂一颗缓降的峰值点 */
+    peakStyleB(i) {
+      const p = this.peak[i];
+      return {
+        width: '9px', height: '4px', borderRadius: '2px',
+        backgroundColor: this.playing ? this._lut[i] : '#21262d',
+        marginBottom: (2 + Math.round(p * 104)) + 'px'
+      };
+    },
+
+    /* 波峰（镜像加强版）：上柱用峰值驱动（比瞬时高、缓降），下柱保持瞬时镜像，
+       视觉上是"主峰持久、倒影灵动"的双层律动 */
+    waveUpStyle(i) {
+      const v = Math.max(this.spec[i], this.peak[i]);
+      return {
+        width: '9px', height: (4 + Math.round(v * 76)) + 'px',
+        backgroundColor: this.playing ? this._lut[i] : '#21262d',
+        borderTopLeftRadius: '3px', borderTopRightRadius: '3px'
       };
     },
 
@@ -2418,6 +2462,8 @@ export default {
   padding-left: 8px; padding-right: 8px;
 }
 .specB-dots-col { width: 14px; height: 108px; align-items: center; justify-content: space-between; }
+.specB-wave { flex-direction: row; justify-content: space-between; padding-left: 8px; padding-right: 8px; }
+.peakcol { align-items: center; justify-content: flex-end; }
 
 /* 上下台提示 */
 .dial-hint {
