@@ -2118,21 +2118,6 @@ export default {
   created() {
     const self = this;
     this._sp = new soundPlayerModule.SoundPlayer();
-    this._activePlayUuid = '';
-    this._autoRetryUsed = false;
-    try {
-      const errorSignal = this._sp.mediaPlayerEndWithErrorChanged;
-      if (errorSignal && errorSignal.on) errorSignal.on(function () {
-        const uuid = String(arguments[0] || '');
-        const code = Number(arguments[1]);
-        if (!code || uuid !== self._activePlayUuid || self._autoRetryUsed) return;
-        self._autoRetryUsed = true;
-        self.playing = false;
-        self.stateText = '重试中…';
-        self.stateColor = '#d29922';
-        setTimeout(function () { self.toggle(true); }, 120);
-      });
-    } catch (e) { console.warn('[radio] 播放错误监听不可用: ' + e); }
     this._masterVolume = 10;
     try {
       this._volume = new volumeModule.Volume();
@@ -2565,7 +2550,6 @@ export default {
     async playStation(gi) {
       this.idx = gi;
       this.stName = this.STATIONS[gi].n;
-      this._autoRetryUsed = false;
       this.saveLastStation(this.idx);
       await this.startPlayback();
       this.view = 'main';
@@ -2664,7 +2648,6 @@ export default {
       }
       const st = this.STATIONS[this.idx];
       this.stName = st.n;
-      this._autoRetryUsed = false;
       console.warn('[radio] 切台到', this.idx + 1, st.n, st.u);
       this.saveLastStation(this.idx);
       this.startPlayback();
@@ -2719,8 +2702,7 @@ export default {
       });
     },
 
-    toggle(isAutoRetry) {
-      if (!isAutoRetry) this._autoRetryUsed = false;
+    toggle() {
       if (this.playing) {
         this._playRequestId = (this._playRequestId || 0) + 1;
         this.stopAll();
@@ -2745,7 +2727,6 @@ export default {
         const r = sp.playOnlineAudio(url);
         console.warn('[radio] playOnlineAudio(url) ret:', r, url);  // 诊断：原生静默 no-op 时留痕
         if (requestId !== this._playRequestId) return;
-        this._activePlayUuid = String(r || '');
         this.playing = true;
         this.stateText = '播放请求已发送';
         this.stateColor = '#3fb950';
@@ -2754,7 +2735,6 @@ export default {
           const r2 = sp.playOnlineAudio({ url: url });
           console.warn('[radio] playOnlineAudio(obj) ret:', r2, url);
           if (requestId !== this._playRequestId) return;
-          this._activePlayUuid = String(r2 || '');
           this.playing = true;
           this.stateText = '播放请求已发送';
           this.stateColor = '#3fb950';
