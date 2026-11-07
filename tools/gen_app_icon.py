@@ -116,9 +116,48 @@ def draw_radio(d: ImageDraw.ImageDraw) -> None:
     d.line([(kx, ky), (kx + 6 * S, ky - 5 * S)], fill=amber, width=2 * S)
 
 
+def draw_bili(d: ImageDraw.ImageDraw) -> None:
+    """小电视：双天线 + 粉色机身 + 深色屏幕 + 「22 33」式笑脸。
+
+    B 站粉 #fb7299 做机身，屏幕用 App 自己的背景色 #0d1117，
+    眼睛画成两道圆弧（模仿小电视的经典表情）。
+    """
+    pink = _c("fb7299")
+    pink_dark = _c("c9416b")
+    dark = _c("0d1117")
+    gray = _c("8b949e")
+
+    # 天线：两根从机身顶角伸出，末端小球
+    d.line([(56 * S, 76 * S), (40 * S, 52 * S)], fill=gray, width=3 * S)
+    d.ellipse([36 * S, 48 * S, 44 * S, 56 * S], fill=pink)
+    d.line([(100 * S, 76 * S), (116 * S, 52 * S)], fill=gray, width=3 * S)
+    d.ellipse([112 * S, 48 * S, 120 * S, 56 * S], fill=pink)
+
+    # 机身
+    d.rounded_rectangle(
+        [24 * S, 74 * S, 132 * S, 140 * S], radius=10 * S, fill=pink,
+        outline=pink_dark, width=2 * S,
+    )
+
+    # 屏幕
+    d.rounded_rectangle(
+        [36 * S, 84 * S, 120 * S, 126 * S], radius=6 * S, fill=dark,
+        outline=pink_dark, width=2 * S,
+    )
+
+    # 眼睛：两段圆弧，像「⌒ ⌒」的经典小电视表情
+    d.arc([48 * S, 94 * S, 66 * S, 116 * S], start=200, end=340, fill=pink, width=4 * S)
+    d.arc([90 * S, 94 * S, 108 * S, 116 * S], start=200, end=340, fill=pink, width=4 * S)
+
+    # 腿
+    d.line([(56 * S, 140 * S), (50 * S, 148 * S)], fill=pink_dark, width=4 * S)
+    d.line([(100 * S, 140 * S), (106 * S, 148 * S)], fill=pink_dark, width=4 * S)
+
+
 # ---------------------------------------------------------------------- 主体
 ICONS = {
     "radio": ("收音机", draw_radio, _c("f2d28b")),
+    "bili": ("小电视", draw_bili, _c("fb7299")),
 }
 
 

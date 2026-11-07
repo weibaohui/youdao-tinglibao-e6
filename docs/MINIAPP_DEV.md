@@ -195,6 +195,25 @@ export default {
 `input` `textarea` `canvas` `qrcode` `richtext` `lottie` `hole` `modal`
 `latex` `ocr-preview` `surface`
 
+> ⚠️ **没有 `video` 组件**（2026-11-06 实测：把 `/usr/lib/libfalcon.so` 和
+> `jsfm-nvue.js.bin` 拉回 Mac 用 `strings` 查，"video" 一个都没有）。
+> 设备端**无法解码并上屏视频**，`image-frame` 只是 GIF/APNG 动画图播放器。
+>
+> ⚠️ **但"真播放"做得到 —— 走设备端原生进程 + DRM**（2026-11-06 真机跑通）：
+> ① 固件自带 **`/usr/bin/ffmpeg` 4.4.1**（带 libdrm/swscale/openssl，`-tls_verify 0` 绕过空的 CA 库，
+>    H.264 软解，无 rkvdec）；
+> ② 固件自带 **`/usr/bin/hal-drmshow`**（有道显示 HAL + libdrm，吃 JPEG/BMP，
+>    `drmModeAddFB` + `drmModeSetCrtc` 直写 DPI-1 屏，240×320）；
+> ③ App 用 `process.exec` 把 DASH 视频轨 URL 交给一个原生进程（仓库 `src/e6_vplay/`），
+>    由它 ffmpeg 解码成帧 → 逐帧 hal-drmshow 上屏。
+> 实测 **6–10fps**；`hal-drmshow` 一次性加载（不重读文件），每帧重启成本 **52ms**；
+> 播放器退出后**框架界面自动收回**（宿主不抢 CRTC，独立进程照样能 SetCrtc）。
+> 完整方案见 `docs/BILIBILI_CLIENT.md`。
+>
+> ⚠️ **`image` 组件能加载远程 http(s) 图片**（真机验证：B 站图床封面正常渲染）。
+> 远程图片若返回 `Content-Encoding: gzip/deflate` 会解不开，
+> 给图片服务加 `Accept-Encoding: identity` 或让服务端出明文。
+
 **模板指令实测**（2026-11-06，探针工程 framework/examples/listtest）：
 `v-for`（含嵌套、`:key`）、`v-if` / `v-else-if` / `v-else`、`{{ }}` 插值、
 `@click`、`@input` 均可用。`scroller` 内放 `v-for` 长列表原生滑动手势

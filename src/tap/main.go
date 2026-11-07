@@ -66,6 +66,8 @@ const (
 	absMTPositionY = 0x36 // 54
 	absMTTrackingI = 0x39 // 57
 
+	btnTouch = 330 // BTN_TOUCH（按下/抬起）
+
 	keyPower   = 116
 	keyVolDown = 114
 	keyVolUp   = 115
@@ -123,12 +125,18 @@ func emit(typ, code uint16, val int32) {
 func sync() { emit(evSyn, synRep, 0) }
 
 // beginTouch 按下：分配 slot、分配 tracking id、报坐标
+//
+// ⚠️ 必须带 **EV_KEY BTN_TOUCH(330)**：
+//   真实触摸屏驱动按下时都会报 BTN_TOUCH，框架（Falcon/有道 UI）的手势层靠它
+//   把 MT 事件转成"触摸"事件 —— 只发 MT 事件的话，App 里的 @click 根本收不到。
+//   （实测：只发 MT 序列时，播放器能收到事件，但 App 的列表点击完全无反应。）
 func beginTouch(x, y int32) {
 	emit(evAbs, absMTSlot, 0)
 	emit(evAbs, absMTTrackingI, 1)
-	emit(evAbs, absMTTouchMaj, 8)
 	emit(evAbs, absMTPositionX, x)
 	emit(evAbs, absMTPositionY, y)
+	emit(evKey, btnTouch, 1)
+	emit(evAbs, absMTTouchMaj, 8)
 	sync()
 }
 
@@ -141,8 +149,9 @@ func moveTo(x, y int32) {
 
 // endTouch 松开：tracking id 置 -1 表示该 slot 抬起
 func endTouch() {
-	emit(evAbs, absMTTrackingI, -1)
 	emit(evAbs, absMTTouchMaj, 0)
+	emit(evKey, btnTouch, 0)
+	emit(evAbs, absMTTrackingI, -1)
 	sync()
 }
 
