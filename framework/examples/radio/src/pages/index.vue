@@ -10,12 +10,12 @@
     <div v-else-if="view==='main'" class="fillcol">
       <!-- 顶栏：标题 + 收藏/列表/退出 -->
       <div class="topbar">
-        <text :style="{color:'#e6edf3',fontSize:'13px',fontWeight:'bold'}">网络收音机</text>
+        <text class="topbar-title">网络收音机</text>
         <div class="topbar-right">
-          <div class="hotzone" @click="toggleFav(idx)"><text :style="{color: isFav(idx) ? '#e3b341' : '#8b949e', fontSize:'15px'}">{{ isFav(idx) ? '★' : '☆' }}</text></div>
-          <div class="hotzone-wide" @click="openList"><text :style="{color:'#79c0ff',fontSize:'12px'}">列表</text></div>
-          <div class="hotzone-settings" @click="openSettings"><text :style="{color:'#8b949e',fontSize:'12px'}">设置</text></div>
-          <div class="hotzone" @click="exitApp"><text :style="{color:'#8b949e',fontSize:'15px'}">×</text></div>
+          <div class="top-action favorite-action" @click="toggleFav(idx)"><text :style="{color: isFav(idx) ? '#e3b341' : '#8b949e', fontSize:'15px'}">{{ isFav(idx) ? '★' : '☆' }}</text></div>
+          <div class="top-action text-action" @click="openList"><text class="top-action-text">列表</text></div>
+          <div class="top-action text-action settings-action" @click="openSettings"><text class="top-action-text settings-action-text">设置</text></div>
+          <div class="top-action close-action" @click="exitApp"><text class="close-action-text">×</text></div>
         </div>
       </div>
       <div class="hairline"></div>
@@ -2726,32 +2726,39 @@ export default {
 .hairline { height: 1px; background-color: #21262d; }
 
 .topbar {
-  height: 30px; flex-direction: row; align-items: center;
-  justify-content: space-between; padding-left: 12px; padding-right: 4px;
+  height: 34px; flex-direction: row; align-items: center;
+  justify-content: space-between; padding-left: 12px; padding-right: 7px;
 }
+.topbar-title { color: #e6edf3; font-size: 13px; font-weight: bold; }
 .topbar-right { flex-direction: row; align-items: center; }
+.top-action {
+  height: 26px; margin-left: 4px;
+  justify-content: center; align-items: center;
+}
+.favorite-action { width: 28px; }
+.text-action {
+  min-width: 35px; padding-left: 5px; padding-right: 5px;
+  background-color: #161b22; border-radius: 6px;
+}
+.settings-action { border-width: 1px; border-color: #30363d; background-color: #1c2128; }
+.top-action-text { color: #79c0ff; font-size: 11px; }
+.settings-action-text { color: #e6edf3; font-weight: bold; }
+.close-action { width: 25px; }
+.close-action-text { color: #8b949e; font-size: 15px; }
 .hotzone {
   width: 30px; height: 30px; margin-left: 6px;
   justify-content: center; align-items: center;
 }
-.hotzone-wide {
-  width: 38px; height: 30px; margin-left: 6px;
-  justify-content: center; align-items: center;
-}
-.hotzone-settings {
-  min-width: 34px; height: 30px; margin-left: 4px;
-  justify-content: center; align-items: center;
-}
 
 .statusrow {
-  margin-top: 6px; height: 18px;
+  margin-top: 7px; height: 20px;
   flex-direction: row; justify-content: space-between; align-items: center;
   padding-left: 12px; padding-right: 12px;
 }
 .status-badge {
   flex-direction: row; align-items: center;
-  padding-left: 6px; padding-right: 7px; height: 16px;
-  border-radius: 8px; border-width: 1px;
+  padding-left: 8px; padding-right: 9px; height: 18px;
+  border-radius: 9px; border-width: 1px;
 }
 .status-actions { flex-direction: row; align-items: center; }
 .settings-shortcut { width: 34px; height: 22px; justify-content: center; align-items: center; background-color: #161b22; border-radius: 5px; }
