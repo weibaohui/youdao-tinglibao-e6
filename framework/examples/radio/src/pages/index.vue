@@ -4,6 +4,19 @@
       <div class="settings-header"><text class="settings-title">收听设置</text><text class="settings-close" @click="closeSettings">完成</text></div>
       <div class="hairline"></div>
       <div class="settings-section"><text class="settings-label">播放模式</text><div class="setting-row" @click="toggleRandom"><text class="setting-name">随机切台</text><text class="setting-value">{{ randomMode ? '开启' : '关闭' }}</text></div></div>
+      <div class="settings-section volume-section">
+        <text class="settings-label">音量</text>
+        <div class="volume-value-row">
+          <div class="volume-step" @click="adjustVolumeBy(-1)"><text class="volume-step-text">−</text></div>
+          <div class="volume-number-wrap"><text class="volume-number">{{ volumeLevel }}</text><text class="volume-unit">/ 100</text></div>
+          <div class="volume-step" @click="adjustVolumeBy(1)"><text class="volume-step-text">＋</text></div>
+        </div>
+        <div class="volume-presets">
+          <div v-for="level in volumePresets" :key="level" class="volume-preset" :style="volumePresetStyle(level)" @click="setVolumeLevel(level)">
+            <text :style="{color: volumeLevel === level ? '#ffffff' : '#8b949e', fontSize:'10px', fontWeight: volumeLevel === level ? 'bold' : 'normal'}">{{ level }}</text>
+          </div>
+        </div>
+      </div>
       <div class="settings-section"><text class="settings-label">睡眠定时</text><div class="setting-row" @click="cycleSleep"><text class="setting-name">{{ sleepLabel || '关闭' }}</text><text class="setting-value">{{ sleepLabel ? '更改' : '设置' }}</text></div><div v-if="sleepLabel" class="setting-row" @click="cancelSleep"><text class="setting-name">取消定时</text><text class="setting-value">×</text></div></div>
     </div>
     <!-- ================= 主界面 (统一播放界面) ================= -->
@@ -2096,6 +2109,8 @@ export default {
       peak: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       view: 'main',
       randomMode: false,
+      volumeLevel: 50,
+      volumePresets: [0, 20, 40, 60, 80, 100],
       sleepLabel: '',
       settingsOpen: false,
       tab: 'all',
@@ -2126,13 +2141,14 @@ export default {
         this._volume.callBackVolumeValue.on(function (v) {
           const n = Number(v);
           if (isNaN(n) || n < 0 || n > 100) return;
-          if (!self._isFading) self._masterVolume = n;
+          if (!self._isFading) { self._masterVolume = n; self.volumeLevel = n; }
           if (!self._volumeRestored) {
             self._volumeRestored = true;
             process.exec('sh', ['-c', 'cat /userdisk/radio_volume.txt 2>/dev/null'], { timeout: 2000 }).then(function (r) {
               const saved = parseInt(String((r && r.stdout) || '').trim(), 10);
               if (!isNaN(saved) && saved >= 0 && saved <= 100 && self._volume) {
                 self._masterVolume = saved;
+                self.volumeLevel = saved;
                 self._isFading = true;
                 self._volume.setVolume(saved);
                 setTimeout(function () { self._isFading = false; }, 250);
@@ -2260,6 +2276,7 @@ export default {
         this._isFading = true;
         try { if (this._volume) this._volume.setVolume(target); } catch (e) {}
         this._masterVolume = target;
+        this.volumeLevel = target;
         process.exec('sh', ['-c', 'echo ' + target + ' > /userdisk/radio_volume.txt']);
         setTimeout(() => { this._isFading = false; }, 180);
       };
@@ -2330,6 +2347,23 @@ export default {
   methods: {
     openSettings() { this.settingsOpen = true; },
     closeSettings() { this.settingsOpen = false; },
+    setVolumeLevel(value) {
+      const target = Math.max(0, Math.min(100, Number(value) || 0));
+      this._masterVolume = target;
+      this.volumeLevel = target;
+      this._isFading = true;
+      try { if (this._volume) this._volume.setVolume(target); } catch (e) {}
+      process.exec('sh', ['-c', 'echo ' + target + ' > /userdisk/radio_volume.txt']);
+      setTimeout(() => { this._isFading = false; }, 180);
+    },
+    adjustVolumeBy(delta) { this.setVolumeLevel(this.volumeLevel + delta); },
+    volumePresetStyle(level) {
+      return {
+        flex: 1, height: '30px', justifyContent: 'center', alignItems: 'center',
+        backgroundColor: this.volumeLevel === level ? '#1f6feb' : '#161b22',
+        borderRadius: '6px', marginRight: level < 100 ? '4px' : '0'
+      };
+    },
     toggleRandom() { RadioSettings.toggleRandom(this); },
     cycleSleep() { RadioSettings.cycleSleep(this); },
     cancelSleep() { RadioSettings.cancelSleep(this); },
@@ -2790,6 +2824,7 @@ export default {
 .settings-title { color: #ffffff; font-size: 15px; font-weight: bold; }
 .settings-close { color: #79c0ff; font-size: 12px; padding: 6px; }
 .settings-section { margin-top: 14px; }
+.volume-section { margin-top: 10px; }
 .fillcol { flex: 1; flex-direction: column; }
 .hairline { height: 1px; background-color: #21262d; }
 
@@ -2951,6 +2986,14 @@ export default {
 .setting-row { height: 38px; flex-direction: row; align-items: center; justify-content: space-between; padding-left: 10px; padding-right: 10px; background-color: #161b22; border-radius: 6px; margin-top: 4px; }
 .setting-name { color: #e6edf3; font-size: 12px; }
 .setting-value { color: #3fb950; font-size: 12px; }
+.volume-value-row { height: 36px; flex-direction: row; align-items: center; justify-content: space-between; padding-left: 8px; padding-right: 8px; background-color: #161b22; border-radius: 6px; }
+.volume-step { width: 36px; height: 30px; justify-content: center; align-items: center; background-color: #21262d; border-radius: 6px; }
+.volume-step-text { color: #e6edf3; font-size: 17px; font-weight: bold; }
+.volume-number { color: #ffffff; font-size: 16px; font-weight: bold; }
+.volume-number-wrap { flex-direction: row; align-items: baseline; }
+.volume-unit { color: #8b949e; font-size: 10px; font-weight: normal; }
+.volume-presets { flex-direction: row; align-items: center; margin-top: 5px; }
+.volume-preset { justify-content: center; align-items: center; }
 
 
 </style>
