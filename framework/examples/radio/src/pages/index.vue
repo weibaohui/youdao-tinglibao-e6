@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <!-- ================= 主界面 ================= -->
+    <!-- ================= 主界面 (统一播放界面) ================= -->
     <div v-if="view==='main'" class="fillcol">
       <!-- 顶栏：标题 + 收藏/列表/退出 -->
       <div class="topbar">
@@ -8,23 +8,30 @@
         <div class="topbar-right">
           <div class="hotzone" @click="toggleFav(idx)"><text :style="{color: isFav(idx) ? '#e3b341' : '#8b949e', fontSize:'15px'}">{{ isFav(idx) ? '★' : '☆' }}</text></div>
           <div class="hotzone-wide" @click="openList"><text :style="{color:'#79c0ff',fontSize:'12px'}">列表</text></div>
-          <div class="hotzone" @click="exitApp"><text :style="{color:'#8b949e',fontSize:'13px'}">✕</text></div>
+          <div class="hotzone" @click="exitApp"><text :style="{color:'#8b949e',fontSize:'15px'}">×</text></div>
         </div>
       </div>
       <div class="hairline"></div>
 
-      <!-- 状态 + 大台名 -->
+      <!-- 状态指示行（直播标识 / 当前台号 / 动效切换） -->
       <div class="statusrow">
-        <div class="status-left">
-          <div :style="{width:'6px',height:'6px',borderRadius:'3px',backgroundColor:stateColor,marginRight:'5px'}"></div>
-          <text :style="{color:stateColor,fontSize:'10px'}">{{ idx + 1 }}/{{ total }} · {{ stateText }}</text>
+        <div class="status-badge" :style="{backgroundColor: playing ? '#132e1b' : '#1c2128', borderColor: playing ? '#238636' : '#30363d'}">
+          <div :style="{width:'6px',height:'6px',borderRadius:'3px',backgroundColor: playing ? '#3fb950' : '#8b949e',marginRight:'4px'}"></div>
+          <text :style="{color: playing ? '#3fb950' : '#8b949e',fontSize:'10px',fontWeight:'bold'}">{{ playing ? '正在收听' : '已暂停' }}</text>
         </div>
-        <text :style="{color:'#484f58',fontSize:'10px'}">{{ vizText() }}</text>
+        <text :style="{color:'#8b949e',fontSize:'10px'}">{{ idx + 1 }} / {{ total }}</text>
+        <div class="viz-badge" @click="onSpecTap">
+          <text :style="{color:'#79c0ff',fontSize:'10px'}">{{ vizText() }}</text>
+        </div>
       </div>
-      <text class="stname-big">{{ stName }}</text>
 
-      <!-- 宽幅频谱区：双击切换动效（镜像 / 经典 / 点阵 / 山峰 / 波峰 / 圆环 / 瀑布 / 粒子） -->
-      <div class="specwrap" @click="onSpecTap">
+      <!-- 大台名 -->
+      <div class="stname-wrap">
+        <text class="stname-big">{{ stName }}</text>
+      </div>
+
+      <!-- 宽幅频谱区（点击播/停，左右滑动切台，双击切动效） -->
+      <div class="specwrap" @click="toggle" @touchstart="onMainTS" @touchend="onMainTE">
         <div v-if="vizStyle===0" class="specB">
           <div v-for="i in colIdx" :key="i" class="specB-col">
             <div class="specB-up"><div :style="upStyleB(i)"></div></div>
@@ -76,20 +83,17 @@
         </div>
       </div>
 
-      <!-- 上下台提示：点按跳台 -->
-      <div class="dial-hint" @click="cut(-1)">
-        <text :style="{color:'#484f58',fontSize:'11px'}">▲  {{ dialName(-1) }}</text>
-      </div>
-      <div class="dial-hint" @click="cut(1)">
-        <text :style="{color:'#484f58',fontSize:'11px'}">▼  {{ dialName(1) }}</text>
-      </div>
-
-      <div class="hairline"></div>
-      <!-- 底部控制条：上一台 / 播放·暂停 / 下一台（音量走物理键） -->
-      <div class="ctlbar">
-        <div class="btn" @click="cut(-1)"><text :style="{color:'#79c0ff',fontSize:'13px'}">上一台</text></div>
-        <div class="btn-play" :style="{backgroundColor: playing ? '#238636' : '#1f6feb'}" @click="toggle"><text :style="{color:'#ffffff',fontSize:'14px',fontWeight:'bold'}">{{ playing ? '暂停' : '播放' }}</text></div>
-        <div class="btn" @click="cut(1)"><text :style="{color:'#79c0ff',fontSize:'13px'}">下一台</text></div>
+      <!-- 上下台导轨卡片（紧凑雅致，点按直接切台） -->
+      <div class="tuner-card">
+        <div class="tuner-item" @click="cut(-1)">
+          <text class="tuner-tag">▲</text>
+          <text class="tuner-name">{{ dialName(-1) }}</text>
+        </div>
+        <div class="tuner-div"></div>
+        <div class="tuner-item" @click="cut(1)">
+          <text class="tuner-tag">▼</text>
+          <text class="tuner-name">{{ dialName(1) }}</text>
+        </div>
       </div>
     </div>
 
@@ -110,7 +114,7 @@
       </div>
 
       <div class="searchrow">
-        <input class="searchbox" placeholder="搜索电台名或编号" @input="onKw" />
+        <input class="searchbox" placeholder="搜索" @input="onKw" />
       </div>
 
       <div class="pagebox" @touchstart="onPageTS" @touchend="onPageTE">
@@ -123,12 +127,12 @@
           <div class="lrow-star" @click="toggleFav(it.gi)"><text :style="{color: it.fav ? '#e3b341' : '#484f58', fontSize:'15px'}">{{ it.fav ? '★' : '☆' }}</text></div>
         </div>
         <div v-if="listItems().length===0" class="lempty">
-          <text :style="{color:'#8b949e',fontSize:'12px'}">{{ tab==='fav' ? '还没有收藏：点台名右侧 ☆，或在主界面点顶栏 ☆' : '没有匹配的电台' }}</text>
+          <text :style="{color:'#8b949e',fontSize:'12px'}">{{ tab==='fav' ? '暂无收藏' : '无结果' }}</text>
         </div>
       </div>
       <div class="pagebar" v-if="listItems().length > 0">
         <div class="pgbtn" @click="turnPage(-1)"><text :style="{color: pg>0 ? '#79c0ff' : '#484f58', fontSize:'16px'}">▲</text></div>
-        <text :style="{color:'#8b949e',fontSize:'11px'}">{{ pg + 1 }}/{{ pageCount() }} 页 · 共 {{ listItems().length }} 台 · 上下滑动翻页</text>
+        <text :style="{color:'#8b949e',fontSize:'11px'}">{{ pg + 1 }} / {{ pageCount() }}</text>
         <div class="pgbtn" @click="turnPage(1)"><text :style="{color: pg < pageCount()-1 ? '#79c0ff' : '#484f58', fontSize:'16px'}">▼</text></div>
       </div>
     </div>
@@ -2132,6 +2136,32 @@ export default {
       else console.warn('[radio] loadFavs no promise: ' + typeof pr);
     } catch (e) { console.warn('[radio] loadFavs err: ' + e); }
 
+    /* 读上次收听的电台（/userdisk/radio_last.txt），实现开机即播和播放界面完全统一 */
+    try {
+      const prLast = process.exec('sh', ['-c', 'cat /userdisk/radio_last.txt 2>/dev/null'], { timeout: 3000 });
+      if (prLast && prLast.then) {
+        prLast.then(function (r) {
+          const out = r && r.stdout ? String(r.stdout).trim() : '';
+          const lastIdx = parseInt(out, 10);
+          if (!isNaN(lastIdx) && lastIdx >= 0 && lastIdx < STATIONS.length) {
+            self.idx = lastIdx;
+            self.stName = STATIONS[lastIdx].n;
+          }
+          self.playing = true;
+          self.playCurrent();
+        }, function () {
+          self.playing = true;
+          self.playCurrent();
+        });
+      } else {
+        self.playing = true;
+        self.playCurrent();
+      }
+    } catch (e) {
+      self.playing = true;
+      self.playCurrent();
+    }
+
     try {
       const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
       const be = new Ctor();
@@ -2178,11 +2208,17 @@ export default {
       if (self.view !== 'main') return;   // 列表页不刷新频谱，避免整页重渲染卡顿
       const cur = self.spec;
       if (!self.playing) {
-        let idle = true;
+        // 暂停时保持微波底纹，界面始终活泼美观且结构完全统一
         const rst = [];
         const rst2 = [];
-        for (let i = 0; i < 16; i++) { if (cur[i] > 0.02) idle = false; rst.push(0); rst2.push(0); }
-        if (!idle) { self.spec = rst; self.peak = rst2; }   // 停播后一次性归零
+        const t = Date.now() / 600;
+        for (let i = 0; i < 16; i++) {
+          const calm = 0.08 + Math.sin(t + i * 0.45) * 0.035;
+          rst.push(calm);
+          rst2.push(calm);
+        }
+        self.spec = rst;
+        self.peak = rst2;
         return;
       }
       const next = [];
@@ -2213,6 +2249,16 @@ export default {
     }, 80);
   },
 
+  beforeDestroy() {
+    if (this._wave) clearInterval(this._wave);
+    this.stopAll();
+  },
+
+  destroyed() {
+    if (this._wave) clearInterval(this._wave);
+    this.stopAll();
+  },
+
   methods: {
     /* 动效样式名（双击频谱区循环切换） */
     vizText() { return ['镜像', '经典', '点阵', '山峰', '波峰', '圆环', '瀑布', '粒子'][this.vizStyle]; },
@@ -2230,7 +2276,7 @@ export default {
       const v = this.spec[i];
       return {
         width: '9px', height: (4 + Math.round(v * 76)) + 'px',
-        backgroundColor: this.playing ? this._lut[i] : '#21262d',
+        backgroundColor: this.playing ? this._lut[i] : '#2b3e50',
         borderTopLeftRadius: '3px', borderTopRightRadius: '3px'
       };
     },
@@ -2239,7 +2285,7 @@ export default {
       const v = this.spec[i];
       return {
         width: '9px', height: (2 + Math.round(v * 30)) + 'px',
-        backgroundColor: this.playing ? this._lut[i] : '#21262d',
+        backgroundColor: this.playing ? this._lut[i] : '#2b3e50',
         borderBottomLeftRadius: '2px', borderBottomRightRadius: '2px'
       };
     },
@@ -2249,17 +2295,17 @@ export default {
       const v = this.spec[i];
       return {
         width: '9px', height: (4 + Math.round(v * 104)) + 'px',
-        backgroundColor: this.playing ? this._lut[i] : '#21262d',
+        backgroundColor: this.playing ? this._lut[i] : '#2b3e50',
         borderTopLeftRadius: '3px', borderTopRightRadius: '3px'
       };
     },
 
     /* LED 点阵（B 宽幅）：每列 11 段（segIdx 顶 10 到底 0），段高 9px，点亮数 = round(v*11) */
     dotStyleB(i, s) {
-      const lit = this.playing && s < Math.round(this.spec[i] * 11);
+      const lit = s < Math.round(this.spec[i] * 11);
       return {
         width: '9px', height: '9px', borderRadius: '2px',
-        backgroundColor: lit ? this._lut[i] : '#21262d'
+        backgroundColor: lit ? (this.playing ? this._lut[i] : '#2b3e50') : '#161b22'
       };
     },
 
@@ -2268,7 +2314,7 @@ export default {
       const p = this.peak[i];
       return {
         width: '9px', height: '4px', borderRadius: '2px',
-        backgroundColor: this.playing ? this._lut[i] : '#21262d',
+        backgroundColor: this.playing ? this._lut[i] : '#2b3e50',
         marginBottom: (2 + Math.round(p * 104)) + 'px'
       };
     },
@@ -2279,7 +2325,7 @@ export default {
       const v = Math.max(this.spec[i], this.peak[i]);
       return {
         width: '9px', height: (4 + Math.round(v * 76)) + 'px',
-        backgroundColor: this.playing ? this._lut[i] : '#21262d',
+        backgroundColor: this.playing ? this._lut[i] : '#2b3e50',
         borderTopLeftRadius: '3px', borderTopRightRadius: '3px'
       };
     },
@@ -2294,10 +2340,10 @@ export default {
     },
 
     radialDotStyle(i, s) {
-      const lit = this.playing && s < Math.round(this.spec[i] * 4);
+      const lit = s < Math.round(this.spec[i] * 4);
       return {
         width: '10px', height: '10px', borderRadius: '5px',
-        backgroundColor: lit ? this._lut[i] : '#21262d'
+        backgroundColor: lit ? (this.playing ? this._lut[i] : '#2b3e50') : '#161b22'
       };
     },
 
@@ -2305,15 +2351,19 @@ export default {
     fallDotStyle(i, r, s) {
       const hist = r === 0 ? this.spec : (this._specHist && this._specHist[r - 1]) || [];
       const v = hist[i] || 0;
-      const lit = this.playing && s < Math.round(v * 4);
+      const lit = s < Math.round(v * 4);
       const dim = [1, 0.75, 0.5, 0.3][r];
-      let bg = '#21262d';
+      let bg = '#161b22';
       if (lit) {
-        const c = this._lutRgb ? this._lutRgb[i] : null;
-        if (c) {
-          bg = 'rgb(' + Math.round(c[0] * dim) + ',' + Math.round(c[1] * dim) + ',' + Math.round(c[2] * dim) + ')';
+        if (!this.playing) {
+          bg = '#2b3e50';
         } else {
-          bg = this._lut[i];
+          const c = this._lutRgb ? this._lutRgb[i] : null;
+          if (c) {
+            bg = 'rgb(' + Math.round(c[0] * dim) + ',' + Math.round(c[1] * dim) + ',' + Math.round(c[2] * dim) + ')';
+          } else {
+            bg = this._lut[i];
+          }
         }
       }
       return { width: '9px', height: '9px', borderRadius: '2px', backgroundColor: bg };
@@ -2321,10 +2371,10 @@ export default {
 
     /* 粒子：柱顶撒 0-4 颗小点，点亮数 = round(v*4) */
     partDotStyle(i, s) {
-      const lit = this.playing && s < Math.round(this.spec[i] * 4);
+      const lit = s < Math.round(this.spec[i] * 4);
       return {
         width: '4px', height: '4px', borderRadius: '2px',
-        backgroundColor: lit ? this._lut[i] : '#21262d',
+        backgroundColor: lit ? (this.playing ? this._lut[i] : '#2b3e50') : '#161b22',
         marginBottom: '3px'
       };
     },
@@ -2397,10 +2447,33 @@ export default {
       this.idx = gi;
       this.stName = this.STATIONS[gi].n;
       this.playing = true;
-      this.stateText = '连接电台…';
+      this.stateText = '连接中…';
       this.stateColor = '#d29922';
+      this.saveLastStation(this.idx);
       this.playCurrent();
       this.view = 'main';
+    },
+
+    saveLastStation(idx) {
+      try {
+        const p = process.exec('sh', ['-c', 'echo "' + idx + '" > /userdisk/radio_last.txt']);
+        if (p && p.catch) p.catch(function () {});
+      } catch (e) { /* ignore */ }
+    },
+
+    onMainTS(e) {
+      const p = this.posOf(e);
+      this._msx = p.x;
+      this._msy = p.y;
+    },
+
+    onMainTE(e) {
+      const p = this.posOf(e);
+      const dx = p.x - (this._msx || 0);
+      const dy = p.y - (this._msy || 0);
+      if (Math.abs(dx) > 35 && Math.abs(dx) > Math.abs(dy)) {
+        this.cut(dx < 0 ? 1 : -1);
+      }
     },
 
     tabStyle(t) {
@@ -2462,6 +2535,7 @@ export default {
       this.playing = true;
       this.stateText = '切台…';
       this.stateColor = '#d29922';
+      this.saveLastStation(this.idx);
       this.playCurrent();
     },
 
@@ -2469,11 +2543,11 @@ export default {
       if (this.playing) {
         this.stopAll();
         this.playing = false;
-        this.stateText = '已停止';
+        this.stateText = '已暂停';
         this.stateColor = '#8b949e';
       } else {
         this.playing = true;
-        this.stateText = '连接电台…';
+        this.stateText = '连接中…';
         this.stateColor = '#d29922';
         this.playCurrent();
       }
@@ -2533,18 +2607,32 @@ export default {
 }
 
 .statusrow {
-  margin-top: 10px; height: 14px;
+  margin-top: 6px; height: 18px;
   flex-direction: row; justify-content: space-between; align-items: center;
   padding-left: 12px; padding-right: 12px;
 }
-.status-left { flex-direction: row; align-items: center; }
-.stname-big {
-  margin-top: 6px; color: #ffffff; font-size: 22px; font-weight: bold;
-  text-align: center; lines: 1; text-overflow: ellipsis;
-  padding-left: 10px; padding-right: 10px;
+.status-badge {
+  flex-direction: row; align-items: center;
+  padding-left: 6px; padding-right: 7px; height: 16px;
+  border-radius: 8px; border-width: 1px;
+}
+.viz-badge {
+  padding-left: 6px; padding-right: 6px; height: 16px;
+  justify-content: center; align-items: center;
+  background-color: #161b22; border-radius: 8px;
+  border-width: 1px; border-color: #30363d;
 }
 
-/* 宽幅频谱区：吃满剩余高度，10 列均布，(240-16)/10 ≈ 22 列宽 */
+.stname-wrap {
+  height: 32px; justify-content: center; align-items: center;
+  padding-left: 10px; padding-right: 10px; margin-top: 2px;
+}
+.stname-big {
+  color: #ffffff; font-size: 20px; font-weight: bold;
+  text-align: center; lines: 1; text-overflow: ellipsis;
+}
+
+/* 宽幅频谱区：居中占用核心高度 */
 .specwrap { flex: 1; justify-content: center; }
 .specB {
   flex-direction: row; justify-content: space-between;
@@ -2591,9 +2679,23 @@ export default {
 /* 粒子：柱顶 4 颗小点 + 经典柱 */
 .partcol { align-items: center; justify-content: flex-end; }
 
-/* 上下台提示 */
-.dial-hint {
-  height: 22px; justify-content: center; align-items: center;
+/* 上下台导轨卡片 */
+.tuner-card {
+  margin-left: 12px; margin-right: 12px; margin-bottom: 12px;
+  background-color: #12161f; border-width: 1px; border-color: #21262d;
+  border-radius: 8px; padding-left: 8px; padding-right: 8px;
+}
+.tuner-item {
+  height: 22px; flex-direction: row; align-items: center;
+}
+.tuner-tag {
+  color: #79c0ff; font-size: 11px; width: 20px; font-weight: bold;
+}
+.tuner-name {
+  color: #8b949e; font-size: 11px; flex: 1; lines: 1; text-overflow: ellipsis;
+}
+.tuner-div {
+  height: 1px; background-color: #1c2128;
 }
 
 /* 列表页 */
@@ -2614,17 +2716,5 @@ export default {
 .pagebar { height: 28px; flex-direction: row; align-items: center; justify-content: center; margin-bottom: 4px; }
 .pgbtn { width: 44px; height: 28px; justify-content: center; align-items: center; }
 
-.ctlbar {
-  height: 62px; flex-direction: row; align-items: center;
-  justify-content: space-between; padding-left: 14px; padding-right: 14px;
-}
-.btn {
-  width: 64px; height: 40px; justify-content: center; align-items: center;
-  background-color: #161b22;
-  border-width: 1px; border-color: #30363d; border-radius: 20px;
-}
-.btn-play {
-  width: 84px; height: 46px; justify-content: center; align-items: center;
-  border-radius: 23px;
-}
+
 </style>
