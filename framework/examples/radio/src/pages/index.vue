@@ -2119,12 +2119,26 @@ export default {
     const self = this;
     this._sp = new soundPlayerModule.SoundPlayer();
     this._masterVolume = 50;
+    this._volumeRestored = false;
     try {
       this._volume = new volumeModule.Volume();
       if (this._volume.callBackVolumeValue && this._volume.callBackVolumeValue.on) {
         this._volume.callBackVolumeValue.on(function (v) {
           const n = Number(v);
-          if (!self._isFading && !isNaN(n) && n >= 0 && n <= 100) self._masterVolume = n;
+          if (isNaN(n) || n < 0 || n > 100) return;
+          if (!self._isFading) self._masterVolume = n;
+          if (!self._volumeRestored) {
+            self._volumeRestored = true;
+            process.exec('sh', ['-c', 'cat /userdisk/radio_volume.txt 2>/dev/null'], { timeout: 2000 }).then(function (r) {
+              const saved = parseInt(String((r && r.stdout) || '').trim(), 10);
+              if (!isNaN(saved) && saved >= 0 && saved <= 100 && self._volume) {
+                self._masterVolume = saved;
+                self._isFading = true;
+                self._volume.setVolume(saved);
+                setTimeout(function () { self._isFading = false; }, 250);
+              }
+            }).catch(function () {});
+          }
         });
       }
       this._volume.getVolume();
@@ -2246,6 +2260,7 @@ export default {
         this._isFading = true;
         try { if (this._volume) this._volume.setVolume(target); } catch (e) {}
         this._masterVolume = target;
+        process.exec('sh', ['-c', 'echo ' + target + ' > /userdisk/radio_volume.txt']);
         setTimeout(() => { this._isFading = false; }, 180);
       };
       bindSig(be.volumeUpButtonClick, () => adjustVolume(1));
