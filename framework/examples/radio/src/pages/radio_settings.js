@@ -42,7 +42,7 @@ export default {
   },
   apply(state, settings) {
     state.randomMode = !!settings.randomMode;
-    if (typeof settings.vizStyle === 'number' && settings.vizStyle >= 0 && settings.vizStyle <= 7) {
+    if (typeof settings.vizStyle === 'number' && settings.vizStyle >= 0 && settings.vizStyle <= 8) {
       state.vizStyle = settings.vizStyle;
     }
     if (settings.colorTheme && typeof state.setColorTheme === 'function') {
@@ -59,11 +59,11 @@ export default {
     save(state);
   },
   setVizStyle(state, styleIdx) {
-    state.vizStyle = styleIdx % 8;
+    state.vizStyle = styleIdx % 9;
     save(state);
   },
   cycleVizStyle(state) {
-    state.vizStyle = (state.vizStyle + 1) % 8;
+    state.vizStyle = (state.vizStyle + 1) % 9;
     save(state);
   },
   setColorTheme(state, themeKey) {

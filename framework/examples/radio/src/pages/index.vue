@@ -137,11 +137,27 @@
             </div>
           </div>
         </div>
-        <div v-else class="specB-classic">
+        <div v-else-if="vizStyle===7" class="specB-classic">
           <div v-for="i in colIdx" :key="i" class="specB-classic-col">
             <div class="partcol">
               <div v-for="s in partSegIdx" :key="s" :style="partDotStyle(i, s)"></div>
               <div :style="classicStyleB(i)"></div>
+            </div>
+          </div>
+        </div>
+        <!-- 样式 8：单轨横柱（横向放置，随音乐播放频率从左到右动态填充） -->
+        <div v-else class="specB-hbar">
+          <div class="hbar-container">
+            <div class="hbar-track">
+              <div class="hbar-fill" :style="hbarFillStyle()"></div>
+              <div class="hbar-peak" :style="hbarPeakStyle()"></div>
+            </div>
+            <div class="hbar-meta">
+              <text class="hbar-label-min">MIN</text>
+              <div class="hbar-ticks">
+                <div v-for="k in hbarTicks" :key="k" class="hbar-tick"></div>
+              </div>
+              <text class="hbar-label-max">MAX</text>
             </div>
           </div>
         </div>
@@ -2205,7 +2221,10 @@ export default {
       kw: '',
       favs: {},
       vizStyle: 0,
-      vizStyles: ['双向镜像', '经典柱状', 'LED点阵', '峰值山峰', '动感波峰', '环形雷达', '瀑布流', '粒子散落'],
+      vizStyles: ['双向镜像', '经典柱状', 'LED点阵', '峰值山峰', '动感波峰', '环形雷达', '瀑布流', '粒子散落', '单轨横柱'],
+      hbarVal: 0,
+      hbarPeak: 0,
+      hbarTicks: [0,1,2,3,4,5,6,7,8],
       colorTheme: 'rainbow',
       colorThemes: [
         { key: 'rainbow', name: '彩色' },
@@ -2438,6 +2457,17 @@ export default {
         pk.push(sm[k2] > p0 ? sm[k2] : Math.max(0, p0 - 0.025));
       }
       self.peak = pk;
+
+      // 单轨横柱：随音乐频率动态计算水平填充能量 (0.0 ~ 1.0)
+      let sumE = 0;
+      for (let k = 0; k < 16; k++) sumE += (sm[k] || 0);
+      const hval = self.playing ? Math.min(1, Math.max(0.04, (sumE / 16) * 1.35)) : 0;
+      self.hbarVal = hval;
+      if (hval > (self.hbarPeak || 0)) {
+        self.hbarPeak = hval;
+      } else {
+        self.hbarPeak = Math.max(0, (self.hbarPeak || 0) - 0.02);
+      }
     }, 120);
   },
 
@@ -2506,6 +2536,38 @@ export default {
     cycleSleep() { RadioSettings.cycleSleep(this); },
     cancelSleep() { RadioSettings.cancelSleep(this); },
     cycleVizStyle() { RadioSettings.cycleVizStyle(this); },
+    hbarFillStyle() {
+      const pct = Math.min(100, Math.max(3, Math.round(this.hbarVal * 100)));
+      let bg = '#1f6feb';
+      if (this.colorTheme === 'mono') bg = '#c9d1d9';
+      else if (this.colorTheme === 'cyber') bg = '#a371f7';
+      else if (this.colorTheme === 'amber') bg = '#d29922';
+      else if (this.colorTheme === 'random' && this._currentLut) bg = this._currentLut[8] || '#3fb950';
+      else {
+        if (pct > 75) bg = '#f85149';
+        else if (pct > 45) bg = '#d29922';
+        else bg = '#238636';
+      }
+      return {
+        width: pct + '%',
+        height: '24px',
+        backgroundColor: bg,
+        borderRadius: '12px'
+      };
+    },
+    hbarPeakStyle() {
+      const pkPct = Math.min(98, Math.max(0, Math.round(this.hbarPeak * 100)));
+      return {
+        position: 'absolute',
+        left: (pkPct * 1.95) + 'px',
+        top: '2px',
+        width: '3px',
+        height: '20px',
+        backgroundColor: '#ffffff',
+        borderRadius: '1.5px',
+        opacity: this.playing && this.hbarPeak > 0.05 ? 1 : 0
+      };
+    },
     colorThemeName() {
       for (let i = 0; i < this.colorThemes.length; i++) {
         if (this.colorThemes[i].key === this.colorTheme) return this.colorThemes[i].name;
@@ -2837,7 +2899,19 @@ export default {
       this.saveLastStation(this.idx);
       if (this.colorTheme === 'random') this.applyColorLut('random');
       await this.startPlayback();
+      this.searching = false;
       this.view = 'main';
+
+      // ★★★【核心安全机制：切台/播放二次安全重试与补发拉流】★★★
+      // 警示：以后绝对不可擅自删除此段逻辑！
+      // 原因：列表点选切台同样需要 1200ms 安全补发保障弱网与旧连接释放间隙的起播成功率。
+      // 严格保证：此处纯粹只调用 this.startPlayback() 重新拉流，绝不触碰任何硬件音量或修改音量状态！
+      const stationIndex = this.idx;
+      setTimeout(() => {
+        if (this.idx !== stationIndex || this.view !== 'main' || this.settingsOpen) return;
+        console.warn('[radio] 列表切台后安全补发一次拉流请求', stationIndex + 1, this.STATIONS[stationIndex].u);
+        this.startPlayback();
+      }, 1200);
     },
 
     saveLastStation(idx) {
@@ -2937,10 +3011,17 @@ export default {
       console.warn('[radio] 切台到', this.idx + 1, st.n, st.u);
       this.saveLastStation(this.idx);
       this.startPlayback();
+
+      // ★★★【核心安全机制：切台/播放二次安全重试与补发拉流】★★★
+      // 警示：以后绝对不可擅自删除此段逻辑！
+      // 原因：RV1106 底层 SoundPlayer 在连续快速切台或网络流握手偶发超时时，
+      // 首次拉流可能因旧连接尚未完全断开而无声。延时 1200ms 补发一次拉流请求，
+      // 能极大提高弱网/切台的起播成功率。
+      // 严格保证：此处纯粹只调用 this.startPlayback() 重新拉流，绝不触碰任何硬件音量或修改音量状态！
       const stationIndex = this.idx;
       setTimeout(() => {
         if (this.idx !== stationIndex || this.view !== 'main' || this.settingsOpen) return;
-        console.warn('[radio] 切台后补发一次拉流请求', stationIndex + 1, this.STATIONS[stationIndex].u);
+        console.warn('[radio] 切台后安全补发一次拉流请求', stationIndex + 1, this.STATIONS[stationIndex].u);
         this.startPlayback();
       }, 1200);
     },
@@ -3315,6 +3396,62 @@ export default {
   color: #ffffff;
   font-size: 11px;
   font-weight: bold;
+}
+
+/* 单轨横柱（样式 8：横向放置，随音乐播放频率从左到右动态填充） */
+.specB-hbar {
+  width: 240px;
+  height: 112px;
+  justify-content: center;
+  align-items: center;
+}
+.hbar-container {
+  width: 206px;
+  flex-direction: column;
+  align-items: center;
+}
+.hbar-track {
+  width: 206px;
+  height: 28px;
+  background-color: #161b22;
+  border-width: 2px;
+  border-color: #30363d;
+  border-radius: 14px;
+  padding: 2px;
+  position: relative;
+  justify-content: center;
+}
+.hbar-meta {
+  width: 206px;
+  height: 18px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+.hbar-label-min {
+  color: #8b949e;
+  font-size: 9px;
+  font-weight: bold;
+}
+.hbar-label-max {
+  color: #8b949e;
+  font-size: 9px;
+  font-weight: bold;
+}
+.hbar-ticks {
+  flex-direction: row;
+  align-items: center;
+}
+.hbar-tick {
+  width: 2px;
+  height: 5px;
+  background-color: #30363d;
+  margin-left: 6px;
+  margin-right: 6px;
+  border-radius: 1px;
 }
 
 
