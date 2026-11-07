@@ -13,16 +13,13 @@
       </div>
       <div class="hairline"></div>
 
-      <!-- 状态指示行（直播标识 / 当前台号 / 动效切换） -->
+      <!-- 状态指示行（左：播放状态，右：台号序号） -->
       <div class="statusrow">
-        <div class="status-badge" :style="{backgroundColor: playing ? '#132e1b' : '#1c2128', borderColor: playing ? '#238636' : '#30363d'}">
+        <div class="status-badge" @click="toggle" :style="{backgroundColor: playing ? '#132e1b' : '#1c2128', borderColor: playing ? '#238636' : '#30363d'}">
           <div :style="{width:'6px',height:'6px',borderRadius:'3px',backgroundColor: playing ? '#3fb950' : '#8b949e',marginRight:'4px'}"></div>
           <text :style="{color: playing ? '#3fb950' : '#8b949e',fontSize:'10px',fontWeight:'bold'}">{{ playing ? '正在收听' : '已暂停' }}</text>
         </div>
-        <text :style="{color:'#8b949e',fontSize:'10px'}">{{ idx + 1 }} / {{ total }}</text>
-        <div class="viz-badge" @click="onSpecTap">
-          <text :style="{color:'#79c0ff',fontSize:'10px'}">{{ vizText() }}</text>
-        </div>
+        <text :style="{color:'#8b949e',fontSize:'11px'}">{{ idx + 1 }}</text>
       </div>
 
       <!-- 大台名 -->
@@ -30,8 +27,8 @@
         <text class="stname-big">{{ stName }}</text>
       </div>
 
-      <!-- 宽幅频谱区（点击播/停，左右滑动切台，双击切动效） -->
-      <div class="specwrap" @click="toggle" @touchstart="onMainTS" @touchend="onMainTE">
+      <!-- 宽幅频谱区（单击播/停，双击切换律动效果，左右滑动切台） -->
+      <div class="specwrap" @click="onSpecClick" @touchstart="onMainTS" @touchend="onMainTE">
         <div v-if="vizStyle===0" class="specB">
           <div v-for="i in colIdx" :key="i" class="specB-col">
             <div class="specB-up"><div :style="upStyleB(i)"></div></div>
@@ -114,7 +111,17 @@
       </div>
 
       <div class="searchrow">
-        <input class="searchbox" placeholder="搜索" @input="onKw" />
+        <!-- 未激活搜索时仅渲染普通卡片，DOM 无 input 节点，物理按键绝不会被系统 focusSearch 误判劫持 -->
+        <div v-if="!searching && !kw" class="search-fake" @click="startSearch">
+          <text class="search-fake-txt">搜索</text>
+        </div>
+        <!-- 仅当用户手动点击搜索框时才挂载原生 input 并激活输入 -->
+        <div v-else class="search-active-row">
+          <input ref="searchInput" class="searchbox" placeholder="搜索" :value="kw" @input="onKw" @blur="onSearchBlur" />
+          <div class="search-cancel" @click="cancelSearch">
+            <text class="search-cancel-txt">取消</text>
+          </div>
+        </div>
       </div>
 
       <div class="pagebox" @touchstart="onPageTS" @touchend="onPageTE">
@@ -2088,6 +2095,7 @@ export default {
       segIdx: [10,9,8,7,6,5,4,3,2,1,0],
       rn: ROW_NAME,
       rs: ROW_NAME_SEL,
+      searching: false,
       pg: 0
     };
   },
@@ -2250,25 +2258,43 @@ export default {
   },
 
   beforeDestroy() {
+    if (this._specClickTimer) clearTimeout(this._specClickTimer);
     if (this._wave) clearInterval(this._wave);
     this.stopAll();
   },
 
   destroyed() {
+    if (this._specClickTimer) clearTimeout(this._specClickTimer);
     if (this._wave) clearInterval(this._wave);
     this.stopAll();
   },
 
   methods: {
-    /* 动效样式名（双击频谱区循环切换） */
-    vizText() { return ['镜像', '经典', '点阵', '山峰', '波峰', '圆环', '瀑布', '粒子'][this.vizStyle]; },
-
-    onSpecTap() {
-      const now = Date.now();
-      if (now - (this._lastSpecTap || 0) < 500) {
-        this.vizStyle = (this.vizStyle + 1) % 8;
+    /* 律动控件点击（单击播/停，双击切换律动动效） */
+    onSpecClick() {
+      if (this._swiped) {
+        this._swiped = false;
+        return;
       }
+      const now = Date.now();
+      const diff = now - (this._lastSpecTap || 0);
       this._lastSpecTap = now;
+
+      if (diff > 0 && diff < 450) {
+        if (this._specClickTimer) {
+          clearTimeout(this._specClickTimer);
+          this._specClickTimer = null;
+        }
+        this.vizStyle = (this.vizStyle + 1) % 8;
+        return;
+      }
+
+      if (this._specClickTimer) clearTimeout(this._specClickTimer);
+      const self = this;
+      this._specClickTimer = setTimeout(function () {
+        self._specClickTimer = null;
+        self.toggle();
+      }, 400);
     },
 
     /* 宽幅镜像频谱（B 方案）：上柱 80px 容器，下柱 32px，列宽 9px（16 列细致版） */
@@ -2380,8 +2406,48 @@ export default {
     },
 
     /* 列表页 */
-    openList() { console.warn('[radio] openList hit, view=', this.view); this.kw = ''; this.pg = 0; this.view = 'list'; },
-    closeList() { this.view = 'main'; },
+    openList() {
+      console.warn('[radio] openList hit, view=', this.view);
+      this.kw = '';
+      this.pg = 0;
+      this.searching = false;
+      this.view = 'list';
+    },
+
+    closeList() {
+      this.searching = false;
+      this.view = 'main';
+    },
+
+    startSearch() {
+      this.searching = true;
+      const self = this;
+      setTimeout(function () {
+        try {
+          if (self.$refs.searchInput && self.$refs.searchInput.focus) {
+            self.$refs.searchInput.focus();
+          }
+        } catch (e) { /* ignore */ }
+      }, 60);
+    },
+
+    cancelSearch() {
+      this.kw = '';
+      this.searching = false;
+      this.pg = 0;
+      try {
+        if (this.$refs.searchInput && this.$refs.searchInput.blur) {
+          this.$refs.searchInput.blur();
+        }
+      } catch (e) { /* ignore */ }
+    },
+
+    onSearchBlur() {
+      if (!this.kw) {
+        this.searching = false;
+      }
+    },
+
     setTab(t) { this.tab = t; this.pg = 0; },
 
     onKw(e) {
@@ -2465,6 +2531,7 @@ export default {
       const p = this.posOf(e);
       this._msx = p.x;
       this._msy = p.y;
+      this._swiped = false;
     },
 
     onMainTE(e) {
@@ -2472,6 +2539,11 @@ export default {
       const dx = p.x - (this._msx || 0);
       const dy = p.y - (this._msy || 0);
       if (Math.abs(dx) > 35 && Math.abs(dx) > Math.abs(dy)) {
+        this._swiped = true;
+        if (this._specClickTimer) {
+          clearTimeout(this._specClickTimer);
+          this._specClickTimer = null;
+        }
         this.cut(dx < 0 ? 1 : -1);
       }
     },
@@ -2616,12 +2688,6 @@ export default {
   padding-left: 6px; padding-right: 7px; height: 16px;
   border-radius: 8px; border-width: 1px;
 }
-.viz-badge {
-  padding-left: 6px; padding-right: 6px; height: 16px;
-  justify-content: center; align-items: center;
-  background-color: #161b22; border-radius: 8px;
-  border-width: 1px; border-color: #30363d;
-}
 
 .stname-wrap {
   height: 32px; justify-content: center; align-items: center;
@@ -2701,9 +2767,28 @@ export default {
 /* 列表页 */
 .tabbar { flex-direction: row; margin-top: 8px; padding-left: 8px; padding-right: 8px; }
 .searchrow { margin-top: 8px; padding-left: 8px; padding-right: 8px; }
+.search-fake {
+  height: 30px; background-color: #161b22;
+  border-radius: 6px; padding-left: 10px; padding-right: 10px;
+  flex-direction: row; align-items: center; justify-content: center;
+  border-width: 1px; border-color: #21262d;
+}
+.search-fake-txt {
+  color: #6e7681; font-size: 13px;
+}
+.search-active-row {
+  flex-direction: row; align-items: center;
+}
 .searchbox {
-  height: 30px; background-color: #161b22; color: #ffffff;
+  flex: 1; height: 30px; background-color: #161b22; color: #ffffff;
   font-size: 13px; border-radius: 6px; padding-left: 8px;
+  border-width: 1px; border-color: #1f6feb;
+}
+.search-cancel {
+  width: 44px; height: 30px; justify-content: center; align-items: center;
+}
+.search-cancel-txt {
+  color: #79c0ff; font-size: 13px;
 }
 .pagebox { flex: 1; margin-top: 6px; }
 .lrow {
