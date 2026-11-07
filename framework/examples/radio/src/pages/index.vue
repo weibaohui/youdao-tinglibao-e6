@@ -1,13 +1,20 @@
 <template>
   <div class="page">
+    <div v-if="settingsOpen" class="settings-fullpage">
+      <div class="settings-header"><text class="settings-title">收听设置</text><text class="settings-close" @click="closeSettings">完成</text></div>
+      <div class="hairline"></div>
+      <div class="settings-section"><text class="settings-label">播放模式</text><div class="setting-row" @click="toggleRandom"><text class="setting-name">随机切台</text><text class="setting-value">{{ randomMode ? '开启' : '关闭' }}</text></div></div>
+      <div class="settings-section"><text class="settings-label">睡眠定时</text><div class="setting-row" @click="cycleSleep"><text class="setting-name">{{ sleepLabel || '关闭' }}</text><text class="setting-value">{{ sleepLabel ? '更改' : '设置' }}</text></div><div v-if="sleepLabel" class="setting-row" @click="cancelSleep"><text class="setting-name">取消定时</text><text class="setting-value">×</text></div></div>
+    </div>
     <!-- ================= 主界面 (统一播放界面) ================= -->
-    <div v-if="view==='main'" class="fillcol">
+    <div v-else-if="view==='main'" class="fillcol">
       <!-- 顶栏：标题 + 收藏/列表/退出 -->
       <div class="topbar">
         <text :style="{color:'#e6edf3',fontSize:'13px',fontWeight:'bold'}">网络收音机</text>
         <div class="topbar-right">
           <div class="hotzone" @click="toggleFav(idx)"><text :style="{color: isFav(idx) ? '#e3b341' : '#8b949e', fontSize:'15px'}">{{ isFav(idx) ? '★' : '☆' }}</text></div>
           <div class="hotzone-wide" @click="openList"><text :style="{color:'#79c0ff',fontSize:'12px'}">列表</text></div>
+          <div class="hotzone-settings" @click="openSettings"><text :style="{color:'#8b949e',fontSize:'12px'}">设置</text></div>
           <div class="hotzone" @click="exitApp"><text :style="{color:'#8b949e',fontSize:'15px'}">×</text></div>
         </div>
       </div>
@@ -15,11 +22,13 @@
 
       <!-- 状态指示行（左：播放状态，右：台号序号） -->
       <div class="statusrow">
-        <div class="status-badge" @click="toggle" :style="{backgroundColor: playing ? '#132e1b' : '#1c2128', borderColor: playing ? '#238636' : '#30363d'}">
-          <div :style="{width:'6px',height:'6px',borderRadius:'3px',backgroundColor: playing ? '#3fb950' : '#8b949e',marginRight:'4px'}"></div>
-          <text :style="{color: playing ? '#3fb950' : '#8b949e',fontSize:'10px',fontWeight:'bold'}">{{ playing ? '正在收听' : '已暂停' }}</text>
+        <div class="status-badge" @click="toggle" :style="{backgroundColor: playing ? '#132e1b' : '#1c2128', borderColor: playing ? '#238636' : (stateColor === '#d29922' ? '#9e6a03' : '#30363d')}">
+          <div :style="{width:'6px',height:'6px',borderRadius:'3px',backgroundColor: playing ? '#3fb950' : stateColor,marginRight:'4px'}"></div>
+          <text :style="{color: playing ? '#3fb950' : stateColor,fontSize:'10px',fontWeight:'bold'}">{{ playing ? '播放中' : stateText }}</text>
         </div>
-        <text :style="{color:'#8b949e',fontSize:'11px'}">{{ idx + 1 }}</text>
+        <div class="status-actions">
+          <text :style="{color: randomMode ? '#e3b341' : '#8b949e',fontSize:'11px',marginRight:'8px'}">{{ randomMode ? '随机 · ' : '' }}{{ idx + 1 }} / {{ total }}</text>
+        </div>
       </div>
 
       <!-- 大台名 -->
@@ -150,6 +159,7 @@
 import buttonEventModule from 'buttonEvent';
 import soundPlayerModule from 'soundPlayer';
 import process from 'process';
+import RadioSettings from './radio_settings.js';
 const STATIONS = [
   { n: "北京文艺广播", u: "https://lhttp.qtfm.cn/live/333/64k.mp3" },
   { n: "北京音乐广播", u: "https://lhttp.qtfm.cn/live/332/64k.mp3" },
@@ -2083,6 +2093,9 @@ export default {
       spec: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       peak: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       view: 'main',
+      randomMode: false,
+      sleepLabel: '',
+      settingsOpen: false,
       tab: 'all',
       kw: '',
       favs: {},
@@ -2103,6 +2116,17 @@ export default {
   created() {
     const self = this;
     this._sp = new soundPlayerModule.SoundPlayer();
+    this._radioSettingsIO = {
+      load: async function (path) {
+        const result = await process.exec('sh', ['-c', 'cat ' + path + ' 2>/dev/null'], { timeout: 3000 });
+        return result && result.stdout;
+      },
+      save: function (path, value) {
+        const request = process.exec('sh', ['-c', "echo '" + value + "' > " + path]);
+        if (request && request.catch) request.catch(function () {});
+      }
+    };
+    RadioSettings.load(this._radioSettingsIO).then(function (settings) { RadioSettings.apply(self, settings); });
     this._rows = null; this._rowsSig = ''; this._favSeq = 0;  // listItems 记忆化（非响应式）
 
     /* 彩虹 LUT（music_vibe 色带思路：HSV 色相扫过 绿→黄→橙→红→品红，
@@ -2144,7 +2168,7 @@ export default {
       else console.warn('[radio] loadFavs no promise: ' + typeof pr);
     } catch (e) { console.warn('[radio] loadFavs err: ' + e); }
 
-    /* 读上次收听的电台（/userdisk/radio_last.txt），实现开机即播和播放界面完全统一 */
+    /* 读上次收听的电台；等按需启动的 SoundPlayer 就绪后再开始拉流。 */
     try {
       const prLast = process.exec('sh', ['-c', 'cat /userdisk/radio_last.txt 2>/dev/null'], { timeout: 3000 });
       if (prLast && prLast.then) {
@@ -2155,19 +2179,15 @@ export default {
             self.idx = lastIdx;
             self.stName = STATIONS[lastIdx].n;
           }
-          self.playing = true;
-          self.playCurrent();
+          self.startPlayback();
         }, function () {
-          self.playing = true;
-          self.playCurrent();
+          self.startPlayback();
         });
       } else {
-        self.playing = true;
-        self.playCurrent();
+        self.startPlayback();
       }
     } catch (e) {
-      self.playing = true;
-      self.playCurrent();
+      self.startPlayback();
     }
 
     try {
@@ -2178,6 +2198,7 @@ export default {
 
       const onBack = () => {
         console.warn('[radio] 物理按键触发: 上一首 (Back)');
+        if (self.settingsOpen) { self.closeSettings(); return; }
         if (self.view === 'list') {
           if (self.pg > 0) { self.turnPage(-1); } else { self.view = 'main'; }
           return;
@@ -2206,14 +2227,13 @@ export default {
       bindSig(be.backButtonClick, onBack);
       bindSig(be.forwardButtonClick, onForward);
       bindSig(be.playButtonClick, onPlay);
-      bindSig(be.homeButtonClick, onPlay);
       console.warn('[radio] 物理按键(上一首/下一首/播放暂停)监听就绪');
     } catch (e) {
       console.warn('[radio] buttonEvent 注册异常: ' + e);
     }
 
     this._wave = setInterval(function () {
-      if (self.view !== 'main') return;   // 列表页不刷新频谱，避免整页重渲染卡顿
+      if (self.view !== 'main' || self.settingsOpen) return;
       const cur = self.spec;
       if (!self.playing) {
         // 暂停时保持微波底纹，界面始终活泼美观且结构完全统一
@@ -2254,7 +2274,7 @@ export default {
         pk.push(sm[k2] > p0 ? sm[k2] : Math.max(0, p0 - 0.025));
       }
       self.peak = pk;
-    }, 80);
+    }, 160);
   },
 
   beforeDestroy() {
@@ -2270,6 +2290,11 @@ export default {
   },
 
   methods: {
+    openSettings() { this.settingsOpen = true; },
+    closeSettings() { this.settingsOpen = false; },
+    toggleRandom() { RadioSettings.toggleRandom(this); },
+    cycleSleep() { RadioSettings.cycleSleep(this); },
+    cancelSleep() { RadioSettings.cancelSleep(this); },
     /* 律动控件点击（单击播/停，双击切换律动动效） */
     onSpecClick() {
       if (this._swiped) {
@@ -2512,11 +2537,8 @@ export default {
     playStation(gi) {
       this.idx = gi;
       this.stName = this.STATIONS[gi].n;
-      this.playing = true;
-      this.stateText = '连接中…';
-      this.stateColor = '#d29922';
       this.saveLastStation(this.idx);
-      this.playCurrent();
+      this.startPlayback();
       this.view = 'main';
     },
 
@@ -2595,59 +2617,93 @@ export default {
 
     exitApp() {
       /* 退出：删模式文件（守护立即释放按键）+ 关页 */
+      this._playRequestId = (this._playRequestId || 0) + 1;
+      this.stopAll();
       process.exec('sh', ['-c', 'rm -f /tmp/e6keys.mode /tmp/e6keyed.pid']);
       if (this.$page && this.$page.finish) this.$page.finish();
     },
 
     cut(d) {
       const n = this.STATIONS.length;
-      this.idx = (this.idx + d + n) % n;
+      if (this.randomMode) {
+        if (n < 2) return;
+        let next = this.idx;
+        while (next === this.idx) next = Math.floor(Math.random() * n);
+        this.idx = next;
+      } else {
+        this.idx = (this.idx + d + n) % n;
+      }
       const st = this.STATIONS[this.idx];
       this.stName = st.n;
-      this.playing = true;
-      this.stateText = '切台…';
-      this.stateColor = '#d29922';
+      console.warn('[radio] 切台到', this.idx + 1, st.n, st.u);
       this.saveLastStation(this.idx);
-      this.playCurrent();
+      this.startPlayback();
+    },
+
+    async ensureSoundPlayer() {
+      for (let i = 0; i < 12; i++) {
+        try {
+          const r = await process.exec('sh', ['-c', 'ps | grep -c [S]oundPlayer'], { timeout: 5000 });
+          if (parseInt(String((r && r.stdout) || '').trim(), 10) > 0) return true;
+        } catch (e) { /* 继续等待按需启动的系统播放器 */ }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      return false;
+    },
+
+    async startPlayback() {
+      const requestId = (this._playRequestId || 0) + 1;
+      this._playRequestId = requestId;
+      this.stopAll();
+      this.playing = false;
+      this.stateText = '连接中…';
+      this.stateColor = '#d29922';
+      await new Promise(resolve => setTimeout(resolve, 350));
+      if (requestId !== this._playRequestId) return;
+      await this.ensureSoundPlayer();
+      if (requestId !== this._playRequestId) return;
+      this.playCurrent(requestId);
     },
 
     toggle() {
       if (this.playing) {
+        this._playRequestId = (this._playRequestId || 0) + 1;
         this.stopAll();
         this.playing = false;
         this.stateText = '已暂停';
         this.stateColor = '#8b949e';
       } else {
-        this.playing = true;
-        this.stateText = '连接中…';
-        this.stateColor = '#d29922';
-        this.playCurrent();
+        this.startPlayback();
       }
     },
 
     stopAll() {
       const sp = this._sp;
-      const ms = ['quickStop', 'stop'];
-      for (let i = 0; i < ms.length; i++) {
-        try { if (sp[ms[i]]) sp[ms[i]](); } catch (e) { /* ignore */ }
-      }
+      try { if (sp.quickStop) sp.quickStop(); }
+      catch (e) { try { if (sp.stop) sp.stop(); } catch (e2) { /* ignore */ } }
     },
 
-    playCurrent() {
+    playCurrent(requestId) {
       const sp = this._sp;
       const url = this.STATIONS[this.idx].u;
       try {
         const r = sp.playOnlineAudio(url);
         console.warn('[radio] playOnlineAudio(url) ret:', r, url);  // 诊断：原生静默 no-op 时留痕
-        this.stateText = '正在播放';
+        if (requestId !== this._playRequestId) return;
+        this.playing = true;
+        this.stateText = '播放请求已发送';
         this.stateColor = '#3fb950';
       } catch (e1) {
         try {
           const r2 = sp.playOnlineAudio({ url: url });
           console.warn('[radio] playOnlineAudio(obj) ret:', r2, url);
-          this.stateText = '正在播放';
+          if (requestId !== this._playRequestId) return;
+          this.playing = true;
+          this.stateText = '播放请求已发送';
           this.stateColor = '#3fb950';
         } catch (e2) {
+          if (requestId !== this._playRequestId) return;
+          this.playing = false;
           this.stateText = '播放失败 ' + String(e1).slice(0, 14);
           this.stateColor = '#f85149';
         }
@@ -2661,6 +2717,11 @@ export default {
 <style scoped>
 /* 深色全屏 + 彩虹频谱（布局骨架参考墨水屏收音机，配色为暗色炫彩） */
 .page { width: 240px; height: 320px; background-color: #0b0e14; flex-direction: column; }
+.settings-fullpage { width: 240px; height: 320px; min-height: 320px; padding-left: 12px; padding-right: 12px; background-color: #0b0e14; flex-direction: column; }
+.settings-header { height: 40px; flex-direction: row; align-items: center; justify-content: space-between; }
+.settings-title { color: #ffffff; font-size: 15px; font-weight: bold; }
+.settings-close { color: #79c0ff; font-size: 12px; padding: 6px; }
+.settings-section { margin-top: 14px; }
 .fillcol { flex: 1; flex-direction: column; }
 .hairline { height: 1px; background-color: #21262d; }
 
@@ -2677,6 +2738,10 @@ export default {
   width: 38px; height: 30px; margin-left: 6px;
   justify-content: center; align-items: center;
 }
+.hotzone-settings {
+  min-width: 34px; height: 30px; margin-left: 4px;
+  justify-content: center; align-items: center;
+}
 
 .statusrow {
   margin-top: 6px; height: 18px;
@@ -2688,14 +2753,16 @@ export default {
   padding-left: 6px; padding-right: 7px; height: 16px;
   border-radius: 8px; border-width: 1px;
 }
+.status-actions { flex-direction: row; align-items: center; }
+.settings-shortcut { width: 34px; height: 22px; justify-content: center; align-items: center; background-color: #161b22; border-radius: 5px; }
 
 .stname-wrap {
-  height: 32px; justify-content: center; align-items: center;
-  padding-left: 10px; padding-right: 10px; margin-top: 2px;
+  min-height: 42px; justify-content: center; align-items: center;
+  padding-left: 12px; padding-right: 12px; margin-top: 4px;
 }
 .stname-big {
-  color: #ffffff; font-size: 20px; font-weight: bold;
-  text-align: center; lines: 1; text-overflow: ellipsis;
+  color: #ffffff; font-size: 18px; font-weight: bold;
+  text-align: center; lines: 2; text-overflow: ellipsis;
 }
 
 /* 宽幅频谱区：居中占用核心高度 */
@@ -2800,6 +2867,10 @@ export default {
 .lempty { height: 60px; justify-content: center; align-items: center; }
 .pagebar { height: 28px; flex-direction: row; align-items: center; justify-content: center; margin-bottom: 4px; }
 .pgbtn { width: 44px; height: 28px; justify-content: center; align-items: center; }
+.settings-label { color: #79c0ff; font-size: 11px; margin-top: 10px; margin-bottom: 4px; }
+.setting-row { height: 38px; flex-direction: row; align-items: center; justify-content: space-between; padding-left: 10px; padding-right: 10px; background-color: #161b22; border-radius: 6px; margin-top: 4px; }
+.setting-name { color: #e6edf3; font-size: 12px; }
+.setting-value { color: #3fb950; font-size: 12px; }
 
 
 </style>

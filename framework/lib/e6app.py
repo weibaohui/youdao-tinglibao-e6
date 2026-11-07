@@ -121,6 +121,12 @@ def compile_sfcs(proj: Path, staging: Path):
             out.write_text(inline_ui_runtime(out.read_text(encoding="utf-8"), runtime_src),
                            encoding="utf-8")
             print(f"  [inline] e6ui 运行时已内联进 {vue.stem}.js")
+    # Plain ES modules in src/pages/ are compiled as separate QuickJS modules. Keep
+    # page behavior (settings, data access, helpers) out of large SFC files.
+    for module in sorted((proj / "src" / "pages").glob("*.js")):
+        out = staging / module.name
+        shutil.copy(module, out)
+        print(f"  [module] {module.name}")
     return [p.stem for p in pages]
 
 
