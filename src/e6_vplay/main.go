@@ -416,14 +416,23 @@ func setSystemVolume(volPercent int) {
 	} else if volPercent > 100 {
 		volPercent = 100
 	}
-	// 1. 设置真实硬件 DAC LINEOUT 真实音量 (Control 29: range 0..30)
-	// libydhal_audio 计算公式: (volPercent * 30) / 100
-	lineoutVal := (volPercent * 30) / 100
-	exec.Command("tinymix", "-D", "0", "set", "29", strconv.Itoa(lineoutVal)).Run()
-
-	// 2. 同步设置 ALSA Master Playback Volume (Control 31: range 0..255)
-	masterVal := (volPercent * 255) / 100
-	exec.Command("tinymix", "-D", "0", "set", "31", strconv.Itoa(masterVal), strconv.Itoa(masterVal)).Run()
+	if volPercent == 0 {
+		exec.Command("tinymix", "-D", "0", "set", "4", "0").Run() // 彻底静音，关闭喇叭功放
+		exec.Command("tinymix", "-D", "0", "set", "29", "0").Run()
+		exec.Command("tinymix", "-D", "0", "set", "31", "0", "0").Run()
+	} else {
+		exec.Command("tinymix", "-D", "0", "set", "4", "1").Run() // 开启功放
+		// 1. 设置真实硬件 DAC LINEOUT 音量 (Control 29: range 0..30)
+		// 最高限制到 24/30，留足模拟动态余量，绝不破音或炸音
+		lineoutVal := (volPercent * 24) / 100
+		if lineoutVal < 1 {
+			lineoutVal = 1
+		}
+		// 2. 设置 Master Playback Volume (Control 31: range 0..255)
+		masterVal := (volPercent * 180) / 100
+		exec.Command("tinymix", "-D", "0", "set", "29", strconv.Itoa(lineoutVal)).Run()
+		exec.Command("tinymix", "-D", "0", "set", "31", strconv.Itoa(masterVal), strconv.Itoa(masterVal)).Run()
+	}
 
 	// 3. 持久化写回系统配置文件
 	saveSystemSpkVolume(volPercent)
@@ -734,7 +743,7 @@ func main() {
 	args = append(args, "-map", "0:v", "-vf", vf, "-pix_fmt", "bgr0", "-f", "rawvideo", "-")
 
 	if hasAudio && !*flagMute {
-		args = append(args, "-map", "1:a", "-af", "volume=0.35", "-ac", "2", "-ar", "48000", "-f", "alsa", "hw:0,0")
+		args = append(args, "-map", "1:a", "-af", "volume=0.20", "-ac", "2", "-ar", "48000", "-f", "alsa", "hw:0,0")
 	} else {
 		args = append(args, "-an")
 	}
@@ -768,8 +777,13 @@ func main() {
 
 		// 独占 gpio-keys 设备，彻底阻止 miniapp 捕获音量键并弹出系统 Toast 抢占 DRM 画面导致屏幕跳动
 		const EVIOCGRAB = 0x40044590
-		syscall.Syscall(syscall.SYS_IOCTL, kf.Fd(), uintptr(EVIOCGRAB), 1)
-		defer syscall.Syscall(syscall.SYS_IOCTL, kf.Fd(), uintptr(EVIOCGRAB), 0)
+		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, kf.Fd(), uintptr(EVIOCGRAB), 1)
+		if errno != 0 {
+			logf("警告: EVIOCGRAB 独占按键失败 errno=%v", errno)
+		} else {
+			logf("成功独占物理按键设备 %s (屏蔽系统 Toast 干扰)", keysDevice)
+			defer syscall.Syscall(syscall.SYS_IOCTL, kf.Fd(), uintptr(EVIOCGRAB), 0)
+		}
 
 		const evSize = 16
 		kbuf := make([]byte, evSize*4)
