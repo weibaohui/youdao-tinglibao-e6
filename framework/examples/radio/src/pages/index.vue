@@ -3,21 +3,62 @@
     <div v-if="settingsOpen" class="settings-fullpage">
       <div class="settings-header"><text class="settings-title">收听设置</text><text class="settings-close" @click="closeSettings">完成</text></div>
       <div class="hairline"></div>
-      <div class="settings-section"><text class="settings-label">播放模式</text><div class="setting-row" @click="toggleRandom"><text class="setting-name">随机切台</text><text class="setting-value">{{ randomMode ? '开启' : '关闭' }}</text></div></div>
-      <div class="settings-section volume-section">
-        <text class="settings-label">音量</text>
-        <div class="volume-value-row">
-          <div class="volume-step" @click="adjustVolumeBy(-1)"><text class="volume-step-text">−</text></div>
-          <div class="volume-number-wrap"><text class="volume-number">{{ volumeLevel }}</text><text class="volume-unit">/ 100</text></div>
-          <div class="volume-step" @click="adjustVolumeBy(1)"><text class="volume-step-text">＋</text></div>
-        </div>
-        <div class="volume-presets">
-          <div v-for="level in volumePresets" :key="level" class="volume-preset" :style="volumePresetStyle(level)" @click="setVolumeLevel(level)">
-            <text :style="{color: volumeLevel === level ? '#ffffff' : '#8b949e', fontSize:'10px', fontWeight: volumeLevel === level ? 'bold' : 'normal'}">{{ level }}</text>
+      <scroller class="settings-scroller">
+        <!-- 频谱效果 -->
+        <div class="settings-section">
+          <text class="settings-label">频谱效果</text>
+          <div class="setting-row" @click="cycleVizStyle">
+            <text class="setting-name">显示样式</text>
+            <text class="setting-value">{{ vizStyles[vizStyle] }} ›</text>
+          </div>
+          <div class="setting-row" @click="cycleColorTheme">
+            <text class="setting-name">色彩方案</text>
+            <text class="setting-value">{{ colorThemeName() }} ›</text>
+          </div>
+          <div class="color-presets">
+            <div v-for="t in colorThemes" :key="t.key" class="color-preset" :style="colorPresetStyle(t.key)" @click="setColorTheme(t.key)">
+              <text :style="{color: colorTheme === t.key ? '#ffffff' : '#8b949e', fontSize:'10px', fontWeight: colorTheme === t.key ? 'bold' : 'normal'}">{{ t.name }}</text>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="settings-section"><text class="settings-label">睡眠定时</text><div class="setting-row" @click="cycleSleep"><text class="setting-name">{{ sleepLabel || '关闭' }}</text><text class="setting-value">{{ sleepLabel ? '更改' : '设置' }}</text></div><div v-if="sleepLabel" class="setting-row" @click="cancelSleep"><text class="setting-name">取消定时</text><text class="setting-value">×</text></div></div>
+
+        <!-- 音量 -->
+        <div class="settings-section volume-section">
+          <text class="settings-label">音量</text>
+          <div class="volume-value-row">
+            <div class="volume-step" @click="adjustVolumeBy(-1)"><text class="volume-step-text">−</text></div>
+            <div class="volume-number-wrap"><text class="volume-number">{{ volumeLevel }}</text><text class="volume-unit">/ 100</text></div>
+            <div class="volume-step" @click="adjustVolumeBy(1)"><text class="volume-step-text">＋</text></div>
+          </div>
+          <div class="volume-presets">
+            <div v-for="level in volumePresets" :key="level" class="volume-preset" :style="volumePresetStyle(level)" @click="setVolumeLevel(level)">
+              <text :style="{color: volumeLevel === level ? '#ffffff' : '#8b949e', fontSize:'10px', fontWeight: volumeLevel === level ? 'bold' : 'normal'}">{{ level }}</text>
+            </div>
+          </div>
+        </div>
+
+        <!-- 播放模式 -->
+        <div class="settings-section">
+          <text class="settings-label">播放模式</text>
+          <div class="setting-row" @click="toggleRandom">
+            <text class="setting-name">随机切台</text>
+            <text class="setting-value">{{ randomMode ? '开启' : '关闭' }}</text>
+          </div>
+        </div>
+
+        <!-- 睡眠定时 -->
+        <div class="settings-section">
+          <text class="settings-label">睡眠定时</text>
+          <div class="setting-row" @click="cycleSleep">
+            <text class="setting-name">{{ sleepLabel || '关闭' }}</text>
+            <text class="setting-value">{{ sleepLabel ? '更改' : '设置' }}</text>
+          </div>
+          <div v-if="sleepLabel" class="setting-row" @click="cancelSleep">
+            <text class="setting-name">取消定时</text>
+            <text class="setting-value">×</text>
+          </div>
+        </div>
+      </scroller>
     </div>
     <!-- ================= 主界面 (统一播放界面) ================= -->
     <div v-else-if="view==='main'" class="fillcol">
@@ -33,12 +74,15 @@
       </div>
       <div class="hairline"></div>
 
-      <!-- 状态指示行（左：播放状态，右：台号序号） -->
+      <!-- 状态指示行（左：播放状态，中：音量，右：台号序号） -->
       <div class="statusrow">
         <div class="status-badge" @click="toggle" :style="{backgroundColor: playing ? '#132e1b' : '#1c2128', borderColor: playing ? '#238636' : (stateColor === '#d29922' ? '#9e6a03' : '#30363d')}">
           <div :style="{width:'6px',height:'6px',borderRadius:'3px',backgroundColor: playing ? '#3fb950' : stateColor,marginRight:'4px'}"></div>
           <text v-if="playing" class="status-text" :style="{color:'#3fb950',fontSize:'10px',fontWeight:'bold'}">播放中</text>
           <text v-else class="status-text" :style="{color:stateColor,fontSize:'10px',fontWeight:'bold'}">{{ stateText }}</text>
+        </div>
+        <div class="status-vol" @click="openSettings">
+          <text class="status-vol-text">{{ volumeLevel }}</text>
         </div>
         <div class="status-actions">
           <text :style="{color: randomMode ? '#e3b341' : '#8b949e',fontSize:'11px',marginRight:'8px'}">{{ randomMode ? '随机 · ' : '' }}{{ idx + 1 }} / {{ total }}</text>
@@ -2117,6 +2161,15 @@ export default {
       kw: '',
       favs: {},
       vizStyle: 0,
+      vizStyles: ['双向镜像', '经典柱状', 'LED点阵', '峰值山峰', '动感波峰', '环形雷达', '瀑布流', '粒子散落'],
+      colorTheme: 'rainbow',
+      colorThemes: [
+        { key: 'rainbow', name: '彩色' },
+        { key: 'mono', name: '灰白' },
+        { key: 'random', name: '随机' },
+        { key: 'cyber', name: '赛博' },
+        { key: 'amber', name: '琥珀' }
+      ],
       colIdx: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
       radialSegIdx: [3,2,1,0],
       fallRowIdx: [0,1,2,3],
@@ -2172,24 +2225,7 @@ export default {
     RadioSettings.load(this._radioSettingsIO).then(function (settings) { RadioSettings.apply(self, settings); });
     this._rows = null; this._rowsSig = ''; this._favSeq = 0;  // listItems 记忆化（非响应式）
 
-    /* 彩虹 LUT（music_vibe 色带思路：HSV 色相扫过 绿→黄→橙→红→品红，
-       S/V 压在 0.85/0.95，艳丽但不刺眼；列色固定不变，每帧只改高度） */
-    this._lut = [];
-    this._lutRgb = [];
-    for (let k = 0; k < 16; k++) {
-      const h = (210 + k * 20) % 360, s = 0.85, v = 0.95;
-      const c = v * (1 - s), f = h / 60 % 1, x = v * (1 - s * f);
-      const y = v * (1 - s * (1 - f));
-      let rgb;
-      switch (Math.floor(h / 60) % 6) {
-        case 0: rgb = [v, y, c]; break; case 1: rgb = [x, v, c]; break;
-        case 2: rgb = [c, v, y]; break; case 3: rgb = [c, x, v]; break;
-        case 4: rgb = [y, c, v]; break; default: rgb = [v, c, x]; break;
-      }
-      const to2 = function (n) { return ('0' + Math.round(n * 255).toString(16)).slice(-2); };
-      this._lut.push('#' + to2(rgb[0]) + to2(rgb[1]) + to2(rgb[2]));
-      this._lutRgb.push([Math.round(rgb[0] * 255), Math.round(rgb[1] * 255), Math.round(rgb[2] * 255)]);
-    }
+    this.applyColorLut(this.colorTheme || 'rainbow');
     this._specHist = [];   // 瀑布历史帧（每帧 unshift 当前 spec，保留 3 帧）
 
     /* 读收藏（/userdisk/radio_fav.txt，逗号分隔的台号） */
@@ -2367,6 +2403,93 @@ export default {
     toggleRandom() { RadioSettings.toggleRandom(this); },
     cycleSleep() { RadioSettings.cycleSleep(this); },
     cancelSleep() { RadioSettings.cancelSleep(this); },
+    cycleVizStyle() { RadioSettings.cycleVizStyle(this); },
+    colorThemeName() {
+      for (let i = 0; i < this.colorThemes.length; i++) {
+        if (this.colorThemes[i].key === this.colorTheme) return this.colorThemes[i].name;
+      }
+      return '彩色';
+    },
+    cycleColorTheme() {
+      const keys = ['rainbow', 'mono', 'random', 'cyber', 'amber'];
+      const curIdx = keys.indexOf(this.colorTheme);
+      const nextKey = keys[(curIdx + 1) % keys.length];
+      this.setColorTheme(nextKey);
+    },
+    setColorTheme(key, skipSave) {
+      this.colorTheme = key;
+      this.applyColorLut(key);
+      if (!skipSave) RadioSettings.setColorTheme(this, key);
+    },
+    colorPresetStyle(key) {
+      const sel = this.colorTheme === key;
+      return {
+        flex: 1, height: '28px', justifyContent: 'center', alignItems: 'center',
+        backgroundColor: sel ? '#1f6feb' : '#161b22',
+        borderRadius: '6px', marginRight: key !== 'amber' ? '4px' : '0'
+      };
+    },
+    applyColorLut(themeKey) {
+      const lut = [];
+      const lutRgb = [];
+      const to2 = function (n) { return ('0' + Math.max(0, Math.min(255, Math.round(n))).toString(16)).slice(-2); };
+
+      if (themeKey === 'mono') {
+        for (let k = 0; k < 16; k++) {
+          const v = Math.round(180 + (k / 15) * 65);
+          lut.push('#' + to2(v) + to2(v) + to2(v));
+          lutRgb.push([v, v, v]);
+        }
+      } else if (themeKey === 'random') {
+        const baseHue = Math.floor(Math.random() * 360);
+        for (let k = 0; k < 16; k++) {
+          const h = (baseHue + k * 137.5) % 360;
+          const s = 0.85, v = 0.95;
+          const c = v * (1 - s), f = h / 60 % 1, x = v * (1 - s * f), y = v * (1 - s * (1 - f));
+          let rgb;
+          switch (Math.floor(h / 60) % 6) {
+            case 0: rgb = [v, y, c]; break; case 1: rgb = [x, v, c]; break;
+            case 2: rgb = [c, v, y]; break; case 3: rgb = [c, x, v]; break;
+            case 4: rgb = [y, c, v]; break; default: rgb = [v, c, x]; break;
+          }
+          lut.push('#' + to2(rgb[0] * 255) + to2(rgb[1] * 255) + to2(rgb[2] * 255));
+          lutRgb.push([Math.round(rgb[0] * 255), Math.round(rgb[1] * 255), Math.round(rgb[2] * 255)]);
+        }
+      } else if (themeKey === 'cyber') {
+        for (let k = 0; k < 16; k++) {
+          const t = k / 15;
+          const r = Math.round(0 + t * 224);
+          const g = Math.round(229 - t * 165);
+          const b = Math.round(255 - t * 4);
+          lut.push('#' + to2(r) + to2(g) + to2(b));
+          lutRgb.push([r, g, b]);
+        }
+      } else if (themeKey === 'amber') {
+        for (let k = 0; k < 16; k++) {
+          const t = k / 15;
+          const r = 255;
+          const g = Math.round(200 - t * 90);
+          const b = Math.round(50 - t * 30);
+          lut.push('#' + to2(r) + to2(g) + to2(b));
+          lutRgb.push([r, g, b]);
+        }
+      } else {
+        for (let k = 0; k < 16; k++) {
+          const h = (210 + k * 20) % 360, s = 0.85, v = 0.95;
+          const c = v * (1 - s), f = h / 60 % 1, x = v * (1 - s * f), y = v * (1 - s * (1 - f));
+          let rgb;
+          switch (Math.floor(h / 60) % 6) {
+            case 0: rgb = [v, y, c]; break; case 1: rgb = [x, v, c]; break;
+            case 2: rgb = [c, v, y]; break; case 3: rgb = [c, x, v]; break;
+            case 4: rgb = [y, c, v]; break; default: rgb = [v, c, x]; break;
+          }
+          lut.push('#' + to2(rgb[0] * 255) + to2(rgb[1] * 255) + to2(rgb[2] * 255));
+          lutRgb.push([Math.round(rgb[0] * 255), Math.round(rgb[1] * 255), Math.round(rgb[2] * 255)]);
+        }
+      }
+      this._lut = lut;
+      this._lutRgb = lutRgb;
+    },
     /* 律动控件点击（单击播/停，双击切换律动动效） */
     onSpecClick() {
       if (this._swiped) {
@@ -2382,7 +2505,7 @@ export default {
           clearTimeout(this._specClickTimer);
           this._specClickTimer = null;
         }
-        this.vizStyle = (this.vizStyle + 1) % 8;
+        RadioSettings.cycleVizStyle(this);
         return;
       }
 
@@ -2610,6 +2733,7 @@ export default {
       this.idx = gi;
       this.stName = this.STATIONS[gi].n;
       this.saveLastStation(this.idx);
+      if (this.colorTheme === 'random') this.applyColorLut('random');
       await this.startPlayback();
       this.view = 'main';
     },
@@ -2705,6 +2829,7 @@ export default {
       } else {
         this.idx = (this.idx + d + n) % n;
       }
+      if (this.colorTheme === 'random') this.applyColorLut('random');
       const st = this.STATIONS[this.idx];
       this.stName = st.n;
       console.warn('[radio] 切台到', this.idx + 1, st.n, st.u);
@@ -2823,7 +2948,7 @@ export default {
 .settings-header { height: 40px; flex-direction: row; align-items: center; justify-content: space-between; }
 .settings-title { color: #ffffff; font-size: 15px; font-weight: bold; }
 .settings-close { color: #79c0ff; font-size: 12px; padding: 6px; }
-.settings-section { margin-top: 14px; }
+.settings-section { margin-top: 10px; }
 .volume-section { margin-top: 10px; }
 .fillcol { flex: 1; flex-direction: column; }
 .hairline { height: 1px; background-color: #21262d; }
@@ -2865,9 +2990,18 @@ export default {
   border-radius: 9px; border-width: 1px;
 }
 .status-text { width: 36px; min-width: 0; lines: 1; text-overflow: ellipsis; }
+.status-vol {
+  position: absolute; left: 74px; top: 1px;
+  width: 34px; height: 18px;
+  flex-direction: row; align-items: center; justify-content: center;
+  background-color: #161b22; border-radius: 9px; border-width: 1px; border-color: #30363d;
+}
+.status-vol-text {
+  color: #c9d1d9; font-size: 10px; font-weight: bold;
+}
 .status-actions {
   position: absolute; right: 12px; top: 1px;
-  width: 54px; flex-direction: row; align-items: center; justify-content: flex-end;
+  height: 18px; flex-direction: row; align-items: center; justify-content: flex-end;
 }
 .settings-shortcut { width: 34px; height: 22px; justify-content: center; align-items: center; background-color: #161b22; border-radius: 5px; }
 
@@ -2994,6 +3128,9 @@ export default {
 .volume-unit { color: #8b949e; font-size: 10px; font-weight: normal; }
 .volume-presets { flex-direction: row; align-items: center; margin-top: 5px; }
 .volume-preset { justify-content: center; align-items: center; }
+.settings-scroller { flex: 1; padding-bottom: 24px; }
+.color-presets { flex-direction: row; align-items: center; margin-top: 6px; }
+.color-preset { justify-content: center; align-items: center; }
 
 
 </style>

@@ -4,6 +4,8 @@ const DURATIONS = [15, 30, 60, 90];
 function save(state) {
   const value = JSON.stringify({
     randomMode: !!state.randomMode,
+    vizStyle: typeof state.vizStyle === 'number' ? state.vizStyle : 0,
+    colorTheme: state.colorTheme || 'rainbow',
     sleepUntil: state._sleepUntil || 0,
     sleepMinutes: state._sleepMinutes || 0
   }).replace(/'/g, '\\u0027');
@@ -40,11 +42,32 @@ export default {
   },
   apply(state, settings) {
     state.randomMode = !!settings.randomMode;
+    if (typeof settings.vizStyle === 'number' && settings.vizStyle >= 0 && settings.vizStyle <= 7) {
+      state.vizStyle = settings.vizStyle;
+    }
+    if (settings.colorTheme && typeof state.setColorTheme === 'function') {
+      state.setColorTheme(settings.colorTheme, true);
+    }
     state._sleepMinutes = settings.sleepMinutes || 0;
     if (settings.sleepUntil > Date.now()) updateTimer(state, settings.sleepUntil);
   },
+  save(state) {
+    save(state);
+  },
   toggleRandom(state) {
     state.randomMode = !state.randomMode;
+    save(state);
+  },
+  setVizStyle(state, styleIdx) {
+    state.vizStyle = styleIdx % 8;
+    save(state);
+  },
+  cycleVizStyle(state) {
+    state.vizStyle = (state.vizStyle + 1) % 8;
+    save(state);
+  },
+  setColorTheme(state, themeKey) {
+    state.colorTheme = themeKey;
     save(state);
   },
   cycleSleep(state) {
