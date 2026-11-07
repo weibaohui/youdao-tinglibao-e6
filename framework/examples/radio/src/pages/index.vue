@@ -2534,11 +2534,11 @@ export default {
       return out;
     },
 
-    playStation(gi) {
+    async playStation(gi) {
       this.idx = gi;
       this.stName = this.STATIONS[gi].n;
       this.saveLastStation(this.idx);
-      this.startPlayback();
+      await this.startPlayback();
       this.view = 'main';
     },
 
