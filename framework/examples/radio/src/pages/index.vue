@@ -2118,13 +2118,13 @@ export default {
   created() {
     const self = this;
     this._sp = new soundPlayerModule.SoundPlayer();
-    this._masterVolume = 10;
+    this._masterVolume = 50;
     try {
       this._volume = new volumeModule.Volume();
       if (this._volume.callBackVolumeValue && this._volume.callBackVolumeValue.on) {
         this._volume.callBackVolumeValue.on(function (v) {
           const n = Number(v);
-          if (!self._isFading && !isNaN(n) && n >= 0 && n <= 10) self._masterVolume = n;
+          if (!self._isFading && !isNaN(n) && n >= 0 && n <= 100) self._masterVolume = n;
         });
       }
       this._volume.getVolume();
@@ -2240,6 +2240,16 @@ export default {
       bindSig(be.backButtonClick, onBack);
       bindSig(be.forwardButtonClick, onForward);
       bindSig(be.playButtonClick, onPlay);
+      const adjustVolume = (direction) => {
+        const current = this._masterVolume;
+        const target = Math.max(0, Math.min(100, current + direction));
+        this._isFading = true;
+        try { if (this._volume) this._volume.setVolume(target); } catch (e) {}
+        this._masterVolume = target;
+        setTimeout(() => { this._isFading = false; }, 180);
+      };
+      bindSig(be.volumeUpButtonClick, () => adjustVolume(1));
+      bindSig(be.volumeDownButtonClick, () => adjustVolume(-1));
       console.warn('[radio] 物理按键(上一首/下一首/播放暂停)监听就绪');
     } catch (e) {
       console.warn('[radio] buttonEvent 注册异常: ' + e);
@@ -2651,6 +2661,12 @@ export default {
       console.warn('[radio] 切台到', this.idx + 1, st.n, st.u);
       this.saveLastStation(this.idx);
       this.startPlayback();
+      const stationIndex = this.idx;
+      setTimeout(() => {
+        if (this.idx !== stationIndex || this.view !== 'main' || this.settingsOpen) return;
+        console.warn('[radio] 切台后补发一次播放请求', stationIndex + 1, this.STATIONS[stationIndex].u);
+        this.startPlayback();
+      }, 1200);
     },
 
     async ensureSoundPlayer() {
@@ -2692,7 +2708,7 @@ export default {
       return new Promise(resolve => {
         const tick = () => {
           step += 1;
-          const value = Math.max(0, Math.min(10, Math.round(from + (target - from) * step / steps)));
+          const value = Math.max(0, Math.min(100, Math.round(from + (target - from) * step / steps)));
           this._fadeVolume = value;
           try { volume.setVolume(value); } catch (e) { /* 音量 API 不可用时保持原播放流程 */ }
           if (step >= steps) { this._fadeVolume = target; this._isFading = false; resolve(); return; }
