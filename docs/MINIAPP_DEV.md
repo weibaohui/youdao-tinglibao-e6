@@ -461,7 +461,65 @@ adb -s $D shell 'miniapp_cli install /tmp/radio.amr'
 
 ---
 
-## 7. 部署与验证（真机命令）
+## 8. 物理按键与事件监听（Hardware Buttons / buttonEvent）
+
+有道听力宝 E6 侧边与正面共有多个物理按键：
+- **KEY_PLAY (207)**：机身播放/暂停按键
+- **KEY_BACK (158)**：上一曲 / 上一首按键
+- **KEY_FORWARD (159)**：下一曲 / 下一首按键
+- **KEY_MENU (139)**：Home / 录音切换键
+- **KEY_VOLUMEUP (115) / KEY_VOLUMEDOWN (114)**：侧边音量键
+
+在 MiniApp 中捕获物理按键必须严格遵守 Falcon 的 **JQSignal** 机制：
+
+```javascript
+import buttonEventModule from 'buttonEvent';
+
+export default {
+  created() {
+    try {
+      const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
+      const be = new Ctor();
+
+      // ★ 关键 1: 必须挂载在 this._be 强引用，否则 QuickJS 会在 created 结束后立即垃圾回收 (GC) 导致监听器失效！
+      this._be = be;
+
+      // ★ 关键 2: 声明 App 准备接管物理按键，防止系统默认导航抢占（例如 KEY_BACK 默认关闭应用）
+      if (be.setButtonEventReady) be.setButtonEventReady(true);
+
+      // ★ 关键 3: 事件是 JQSignal 信号对象，不是常规属性，必须使用 .on(callback) 订阅！
+      // 错误写法: be.playButtonClick = fn (不会生效)
+      // 正确写法: be.playButtonClick.on(fn)
+      if (be.playButtonClick && be.playButtonClick.on) {
+        be.playButtonClick.on(() => {
+          this.togglePlay();
+        });
+      }
+      if (be.backButtonClick && be.backButtonClick.on) {
+        be.backButtonClick.on(() => {
+          this.prevTrack();
+        });
+      }
+      if (be.forwardButtonClick && be.forwardButtonClick.on) {
+        be.forwardButtonClick.on(() => {
+          this.nextTrack();
+        });
+      }
+      if (be.homeButtonClick && be.homeButtonClick.on) {
+        be.homeButtonClick.on(() => {
+          this.togglePlay();
+        });
+      }
+    } catch (e) {
+      console.warn('注册物理按键监听异常: ' + e);
+    }
+  }
+};
+```
+
+---
+
+## 9. 部署与验证（真机命令）
 
 ```bash
 D=192.168.0.109:5555        # 或 USB 序列号
