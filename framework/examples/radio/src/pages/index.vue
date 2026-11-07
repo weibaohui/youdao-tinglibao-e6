@@ -81,7 +81,7 @@
           <text v-if="playing" class="status-text" :style="{color:'#3fb950',fontSize:'10px',fontWeight:'bold'}">播放中</text>
           <text v-else class="status-text" :style="{color:stateColor,fontSize:'10px',fontWeight:'bold'}">{{ stateText }}</text>
         </div>
-        <div class="status-vol" @click="openSettings">
+        <div class="status-vol" @click="openQuickVol">
           <text class="status-vol-text">{{ volumeLevel }}</text>
         </div>
         <div class="status-actions">
@@ -157,6 +157,49 @@
         <div class="tuner-item" @click="cut(1)">
           <text class="tuner-tag">▼</text>
           <text class="tuner-name">{{ dialName(1) }}</text>
+        </div>
+      </div>
+
+      <!-- 0-10 快速音量设置浮层小窗口 -->
+      <div v-if="quickVolOpen" class="quick-vol-mask" @click="closeQuickVol">
+        <div class="quick-vol-card" @click="onCardClick">
+          <div class="quick-vol-header">
+            <text class="quick-vol-title">快速音量</text>
+            <div class="quick-vol-cur-wrap">
+              <text class="quick-vol-cur-num">{{ volumeLevel }}</text>
+              <text class="quick-vol-cur-unit">/100</text>
+            </div>
+            <div class="quick-vol-close" @click="closeQuickVol">
+              <text class="quick-vol-close-txt">×</text>
+            </div>
+          </div>
+
+          <!-- 步进微调 -->
+          <div class="quick-vol-stepper">
+            <div class="quick-step-btn" @click="adjustVolumeBy(-1)">
+              <text class="quick-step-txt">−</text>
+            </div>
+            <text class="quick-step-hint">点击数字快速设定 0-10</text>
+            <div class="quick-step-btn" @click="adjustVolumeBy(1)">
+              <text class="quick-step-txt">＋</text>
+            </div>
+          </div>
+
+          <!-- 0-10 快捷网格 (3行4列：1-4, 5-8, 静音-9-10-完成) -->
+          <div class="quick-vol-grid">
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(1)" @click="selectQuickVol(1)"><text :style="quickVolTextStyle(1)">1</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(2)" @click="selectQuickVol(2)"><text :style="quickVolTextStyle(2)">2</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(3)" @click="selectQuickVol(3)"><text :style="quickVolTextStyle(3)">3</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(4)" @click="selectQuickVol(4)"><text :style="quickVolTextStyle(4)">4</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(5)" @click="selectQuickVol(5)"><text :style="quickVolTextStyle(5)">5</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(6)" @click="selectQuickVol(6)"><text :style="quickVolTextStyle(6)">6</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(7)" @click="selectQuickVol(7)"><text :style="quickVolTextStyle(7)">7</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(8)" @click="selectQuickVol(8)"><text :style="quickVolTextStyle(8)">8</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(0)" @click="selectQuickVol(0)"><text :style="quickVolTextStyle(0)">静音</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(9)" @click="selectQuickVol(9)"><text :style="quickVolTextStyle(9)">9</text></div>
+            <div class="quick-vol-btn" :style="quickVolBtnStyle(10)" @click="selectQuickVol(10)"><text :style="quickVolTextStyle(10)">10</text></div>
+            <div class="quick-vol-btn quick-vol-done" @click="closeQuickVol"><text class="quick-vol-done-txt">关闭</text></div>
+          </div>
         </div>
       </div>
     </div>
@@ -2157,6 +2200,7 @@ export default {
       volumePresets: [0, 20, 40, 60, 80, 100],
       sleepLabel: '',
       settingsOpen: false,
+      quickVolOpen: false,
       tab: 'all',
       kw: '',
       favs: {},
@@ -2188,13 +2232,18 @@ export default {
     this._sp = new soundPlayerModule.SoundPlayer();
     this._masterVolume = 50;
     this._volumeRestored = false;
+    // 启动 2 号方案轻量音频能量探针
+    try {
+      process.exec('sh', ['-c', 'ps | grep -v grep | grep -q e6_sound_meter || (nohup /userdisk/e6_sound_meter >/dev/null 2>&1 &)']);
+    } catch (e) {}
     try {
       this._volume = new volumeModule.Volume();
       if (this._volume.callBackVolumeValue && this._volume.callBackVolumeValue.on) {
         this._volume.callBackVolumeValue.on(function (v) {
           const n = Number(v);
           if (isNaN(n) || n < 0 || n > 100) return;
-          if (!self._isFading) { self._masterVolume = n; self.volumeLevel = n; }
+          self._masterVolume = n;
+          self.volumeLevel = n;
           if (!self._volumeRestored) {
             self._volumeRestored = true;
             process.exec('sh', ['-c', 'cat /userdisk/radio_volume.txt 2>/dev/null'], { timeout: 2000 }).then(function (r) {
@@ -2202,9 +2251,7 @@ export default {
               if (!isNaN(saved) && saved >= 0 && saved <= 100 && self._volume) {
                 self._masterVolume = saved;
                 self.volumeLevel = saved;
-                self._isFading = true;
                 self._volume.setVolume(saved);
-                setTimeout(function () { self._isFading = false; }, 250);
               }
             }).catch(function () {});
           }
@@ -2309,12 +2356,10 @@ export default {
       const adjustVolume = (direction) => {
         const current = this._masterVolume;
         const target = Math.max(0, Math.min(100, current + direction));
-        this._isFading = true;
         try { if (this._volume) this._volume.setVolume(target); } catch (e) {}
         this._masterVolume = target;
         this.volumeLevel = target;
         process.exec('sh', ['-c', 'echo ' + target + ' > /userdisk/radio_volume.txt']);
-        setTimeout(() => { this._isFading = false; }, 180);
       };
       bindSig(be.volumeUpButtonClick, () => adjustVolume(1));
       bindSig(be.volumeDownButtonClick, () => adjustVolume(-1));
@@ -2322,6 +2367,27 @@ export default {
     } catch (e) {
       console.warn('[radio] buttonEvent 注册异常: ' + e);
     }
+
+    // 2 号方案：轮询真实音频帧能量文件 /tmp/e6_spec.raw
+    this._realSpec = null;
+    this._lastRealSpecTime = 0;
+    this._specPoll = setInterval(function () {
+      if (self.view !== 'main' || self.settingsOpen || !self.playing) return;
+      process.exec('sh', ['-c', 'cat /tmp/e6_spec.raw 2>/dev/null'], { timeout: 300 }).then(function (r) {
+        const out = (r && r.stdout) ? String(r.stdout).trim() : '';
+        if (out) {
+          const parts = out.split(',');
+          if (parts.length === 16) {
+            const vals = [];
+            for (let k = 0; k < 16; k++) {
+              vals.push(parseFloat(parts[k]) || 0.08);
+            }
+            self._realSpec = vals;
+            self._lastRealSpecTime = Date.now();
+          }
+        }
+      }).catch(function () {});
+    }, 120);
 
     this._wave = setInterval(function () {
       if (self.view !== 'main' || self.settingsOpen) return;
@@ -2340,14 +2406,21 @@ export default {
         self.peak = rst2;
         return;
       }
+
+      // 2 号方案真实音频随动：优先消费来自网络流的瞬时真实频带能量
+      const isRealFresh = self._realSpec && (Date.now() - (self._lastRealSpecTime || 0) < 800);
       const next = [];
       for (let i = 0; i < 16; i++) {
-        const r = Math.random();
-        const target = r * r;                 // 平方偏置：常态低位、偶发冲顶
-        // 快攻慢放（music_vibe：命中即顶、每帧 ×0.86 缓落），律动更像音乐
-        next.push(target > cur[i] ? target : cur[i] * 0.86);
+        let target;
+        if (isRealFresh) {
+          target = self._realSpec[i];
+        } else {
+          const r = Math.random();
+          target = r * r;
+        }
+        next.push(target > cur[i] ? (cur[i] * 0.25 + target * 0.75) : cur[i] * 0.84);
       }
-      // 相邻平滑：独奏变波浪，视觉上更像真实频谱
+      // 相邻平滑：有机律动
       const sm = [];
       for (let j = 0; j < 16; j++) {
         const l = j > 0 ? next[j - 1] : next[j];
@@ -2365,32 +2438,61 @@ export default {
         pk.push(sm[k2] > p0 ? sm[k2] : Math.max(0, p0 - 0.025));
       }
       self.peak = pk;
-    }, 160);
+    }, 120);
   },
 
   beforeDestroy() {
     if (this._specClickTimer) clearTimeout(this._specClickTimer);
     if (this._wave) clearInterval(this._wave);
+    if (this._specPoll) clearInterval(this._specPoll);
     this.stopAll();
   },
 
   destroyed() {
     if (this._specClickTimer) clearTimeout(this._specClickTimer);
     if (this._wave) clearInterval(this._wave);
+    if (this._specPoll) clearInterval(this._specPoll);
     this.stopAll();
   },
 
   methods: {
     openSettings() { this.settingsOpen = true; },
     closeSettings() { this.settingsOpen = false; },
+    openQuickVol() { this.quickVolOpen = true; },
+    closeQuickVol() { this.quickVolOpen = false; },
+    onCardClick(e) { if (e && e.stopPropagation) e.stopPropagation(); },
+    selectQuickVol(v) {
+      this.setVolumeLevel(v);
+      this.quickVolOpen = false;
+    },
+    quickVolBtnStyle(val) {
+      const active = this.volumeLevel === val;
+      return {
+        width: '46px',
+        height: '32px',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: active ? '#1f6feb' : '#21262d',
+        borderRadius: '6px',
+        marginBottom: '6px',
+        borderWidth: active ? '1px' : '0px',
+        borderColor: '#79c0ff'
+      };
+    },
+    quickVolTextStyle(val) {
+      const active = this.volumeLevel === val;
+      return {
+        color: active ? '#ffffff' : '#c9d1d9',
+        fontSize: val === 0 ? '11px' : '13px',
+        fontWeight: active ? 'bold' : 'normal'
+      };
+    },
     setVolumeLevel(value) {
       const target = Math.max(0, Math.min(100, Number(value) || 0));
       this._masterVolume = target;
       this.volumeLevel = target;
-      this._isFading = true;
       try { if (this._volume) this._volume.setVolume(target); } catch (e) {}
       process.exec('sh', ['-c', 'echo ' + target + ' > /userdisk/radio_volume.txt']);
-      setTimeout(() => { this._isFading = false; }, 180);
     },
     adjustVolumeBy(delta) { this.setVolumeLevel(this.volumeLevel + delta); },
     volumePresetStyle(level) {
@@ -2812,10 +2914,10 @@ export default {
     },
 
     exitApp() {
-      /* 退出：删模式文件（守护立即释放按键）+ 关页 */
+      /* 退出：关后台进程 + 删模式文件（守护立即释放按键）+ 关页 */
       this._playRequestId = (this._playRequestId || 0) + 1;
       this.stopAll();
-      process.exec('sh', ['-c', 'rm -f /tmp/e6keys.mode /tmp/e6keyed.pid']);
+      process.exec('sh', ['-c', 'killall e6_sound_meter 2>/dev/null; rm -f /tmp/e6keys.mode /tmp/e6keyed.pid /tmp/e6_audio.url /tmp/e6_spec.raw /tmp/e6_audio_gain']);
       if (this.$page && this.$page.finish) this.$page.finish();
     },
 
@@ -2838,7 +2940,7 @@ export default {
       const stationIndex = this.idx;
       setTimeout(() => {
         if (this.idx !== stationIndex || this.view !== 'main' || this.settingsOpen) return;
-        console.warn('[radio] 切台后补发一次播放请求', stationIndex + 1, this.STATIONS[stationIndex].u);
+        console.warn('[radio] 切台后补发一次拉流请求', stationIndex + 1, this.STATIONS[stationIndex].u);
         this.startPlayback();
       }, 1200);
     },
@@ -2857,39 +2959,15 @@ export default {
     async startPlayback() {
       const requestId = (this._playRequestId || 0) + 1;
       this._playRequestId = requestId;
-      const fadeBackTo = this._masterVolume;
-      if (this.playing && this._volume) await this.fadeOutput(0, 180);
-      if (requestId !== this._playRequestId) return;
       this.stopAll();
       this.playing = false;
       this.stateText = '连接中…';
       this.stateColor = '#d29922';
-      await new Promise(resolve => setTimeout(resolve, 350));
+      await new Promise(resolve => setTimeout(resolve, 200));
       if (requestId !== this._playRequestId) return;
       await this.ensureSoundPlayer();
       if (requestId !== this._playRequestId) return;
       this.playCurrent(requestId);
-      if (this._volume) await this.fadeOutput(fadeBackTo, 220);
-    },
-
-    fadeOutput(target, duration) {
-      const volume = this._volume;
-      if (!volume || !volume.setVolume) return Promise.resolve();
-      const from = this._fadeVolume == null ? this._masterVolume : this._fadeVolume;
-      this._isFading = true;
-      const steps = 4;
-      let step = 0;
-      return new Promise(resolve => {
-        const tick = () => {
-          step += 1;
-          const value = Math.max(0, Math.min(100, Math.round(from + (target - from) * step / steps)));
-          this._fadeVolume = value;
-          try { volume.setVolume(value); } catch (e) { /* 音量 API 不可用时保持原播放流程 */ }
-          if (step >= steps) { this._fadeVolume = target; this._isFading = false; resolve(); return; }
-          setTimeout(tick, Math.max(20, Math.floor(duration / steps)));
-        };
-        tick();
-      });
     },
 
     toggle() {
@@ -2908,6 +2986,7 @@ export default {
       const sp = this._sp;
       try { if (sp.quickStop) sp.quickStop(); }
       catch (e) { try { if (sp.stop) sp.stop(); } catch (e2) { /* ignore */ } }
+      process.exec('sh', ['-c', 'rm -f /tmp/e6_audio.url /tmp/e6_spec.raw']);
     },
 
     playCurrent(requestId) {
@@ -2920,6 +2999,7 @@ export default {
         this.playing = true;
         this.stateText = '播放请求已发送';
         this.stateColor = '#3fb950';
+        process.exec('sh', ['-c', 'echo "' + url + '" > /tmp/e6_audio.url']);
       } catch (e1) {
         try {
           const r2 = sp.playOnlineAudio({ url: url });
@@ -2928,16 +3008,17 @@ export default {
           this.playing = true;
           this.stateText = '播放请求已发送';
           this.stateColor = '#3fb950';
+          process.exec('sh', ['-c', 'echo "' + url + '" > /tmp/e6_audio.url']);
         } catch (e2) {
           if (requestId !== this._playRequestId) return;
           this.playing = false;
           this.stateText = '播放失败 ' + String(e1).slice(0, 14);
           this.stateColor = '#f85149';
+          process.exec('sh', ['-c', 'rm -f /tmp/e6_audio.url /tmp/e6_spec.raw']);
         }
       }
-    },
-
     }
+  }
 };
 </script>
 
@@ -3131,6 +3212,110 @@ export default {
 .settings-scroller { flex: 1; padding-bottom: 24px; }
 .color-presets { flex-direction: row; align-items: center; margin-top: 6px; }
 .color-preset { justify-content: center; align-items: center; }
+
+/* 0-10 快速音量设置弹窗 */
+.quick-vol-mask {
+  position: absolute;
+  top: 0; left: 0;
+  width: 240px; height: 320px;
+  background-color: rgba(0, 0, 0, 0.72);
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+.quick-vol-card {
+  width: 218px;
+  background-color: #161b22;
+  border-width: 1px;
+  border-color: #30363d;
+  border-radius: 10px;
+  padding: 10px;
+}
+.quick-vol-header {
+  height: 28px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.quick-vol-title {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: bold;
+}
+.quick-vol-cur-wrap {
+  flex-direction: row;
+  align-items: baseline;
+}
+.quick-vol-cur-num {
+  color: #79c0ff;
+  font-size: 16px;
+  font-weight: bold;
+}
+.quick-vol-cur-unit {
+  color: #8b949e;
+  font-size: 10px;
+  margin-left: 2px;
+}
+.quick-vol-close {
+  width: 24px;
+  height: 24px;
+  justify-content: center;
+  align-items: center;
+}
+.quick-vol-close-txt {
+  color: #8b949e;
+  font-size: 16px;
+}
+.quick-vol-stepper {
+  height: 30px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  margin-bottom: 8px;
+  background-color: #0d1117;
+  border-radius: 6px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.quick-step-btn {
+  width: 28px;
+  height: 24px;
+  justify-content: center;
+  align-items: center;
+  background-color: #21262d;
+  border-radius: 4px;
+}
+.quick-step-txt {
+  color: #79c0ff;
+  font-size: 16px;
+  font-weight: bold;
+}
+.quick-step-hint {
+  color: #8b949e;
+  font-size: 10px;
+}
+.quick-vol-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.quick-vol-btn {
+  width: 46px;
+  height: 32px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 6px;
+  border-radius: 6px;
+}
+.quick-vol-done {
+  background-color: #238636;
+}
+.quick-vol-done-txt {
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: bold;
+}
 
 
 </style>
