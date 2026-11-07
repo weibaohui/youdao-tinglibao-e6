@@ -154,10 +154,74 @@ def draw_bili(d: ImageDraw.ImageDraw) -> None:
     d.line([(100 * S, 140 * S), (106 * S, 148 * S)], fill=pink_dark, width=4 * S)
 
 
+def draw_glm(d: ImageDraw.ImageDraw) -> None:
+    """GLM 用量：赛博监控终端 + 环形额度表盘 + 智谱 AI 核心星芒 + 三档动态用量条。
+
+    配色取自智谱 AI / GLM 品牌调色板：
+    电光青 #38bdf8 + 智谱蓝 #1f6feb + 活力绿 #3fb950 + 能量紫 #a371f7。
+    """
+    import math
+
+    # 赛博监控终端机身（复刻 radio/bili 的卡片规范）
+    d.rounded_rectangle(
+        [24 * S, 72 * S, 132 * S, 142 * S], radius=10 * S,
+        fill=_c("161b22"), outline=_c("38bdf8"), width=2 * S,
+    )
+
+    # 深色液晶屏幕内框
+    d.rounded_rectangle(
+        [28 * S, 76 * S, 128 * S, 138 * S], radius=7 * S,
+        fill=_c("0d1117"), outline=_c("21262d"), width=1 * S,
+    )
+
+    # 左侧：环形额度表盘 (Gauge)
+    gcx, gcy, gr = 53 * S, 107 * S, 20 * S
+    # 底轨
+    d.arc([gcx - gr, gcy - gr, gcx + gr, gcy + gr], start=135, end=405, fill=_c("21262d"), width=4 * S)
+    # 活跃额度弧 (75% 进度)
+    d.arc([gcx - gr, gcy - gr, gcx + gr, gcy + gr], start=135, end=345, fill=_c("38bdf8"), width=4 * S)
+    # 进度端点高亮小光球
+    rad = math.radians(345)
+    cap_x = gcx + gr * math.cos(rad)
+    cap_y = gcy + gr * math.sin(rad)
+    d.ellipse([cap_x - 2.5 * S, cap_y - 2.5 * S, cap_x + 2.5 * S, cap_y + 2.5 * S], fill=_c("ffffff"))
+
+    # 表盘中心：智谱 AI 星芒 (4 尖菱形星芒)
+    sp_len, sp_w = 8 * S, 2.5 * S
+    d.polygon([(gcx, gcy - sp_len), (gcx + sp_w, gcy), (gcx, gcy + sp_len), (gcx - sp_w, gcy)], fill=_c("60a5fa"))
+    d.polygon([(gcx - sp_len, gcy), (gcx, gcy + sp_w), (gcx + sp_len, gcy), (gcx, gcy - sp_w)], fill=_c("38bdf8"))
+    d.ellipse([gcx - 1.5 * S, gcy - 1.5 * S, gcx + 1.5 * S, gcy + 1.5 * S], fill=_c("ffffff"))
+
+    # 右侧：三档用量进度胶囊 (5h / 周额度 / Tokens)
+    bx, bw, bh = 83 * S, 39 * S, 6 * S
+    # 1. 5h 额度 (电光青)
+    by1 = 87 * S
+    d.ellipse([bx - 6 * S, by1 + 1.5 * S, bx - 3 * S, by1 + 4.5 * S], fill=_c("38bdf8"))
+    d.rounded_rectangle([bx, by1, bx + bw, by1 + bh], radius=3 * S, fill=_c("161b22"), outline=_c("30363d"), width=1 * S)
+    d.rounded_rectangle([bx, by1, bx + bw * 0.78, by1 + bh], radius=3 * S, fill=_c("38bdf8"))
+
+    # 2. 周额度 (健康绿)
+    by2 = 103 * S
+    d.ellipse([bx - 6 * S, by2 + 1.5 * S, bx - 3 * S, by2 + 4.5 * S], fill=_c("3fb950"))
+    d.rounded_rectangle([bx, by2, bx + bw, by2 + bh], radius=3 * S, fill=_c("161b22"), outline=_c("30363d"), width=1 * S)
+    d.rounded_rectangle([bx, by2, bx + bw * 0.55, by2 + bh], radius=3 * S, fill=_c("3fb950"))
+
+    # 3. 累计消耗 (能量紫)
+    by3 = 119 * S
+    d.ellipse([bx - 6 * S, by3 + 1.5 * S, bx - 3 * S, by3 + 4.5 * S], fill=_c("a371f7"))
+    d.rounded_rectangle([bx, by3, bx + bw, by3 + bh], radius=3 * S, fill=_c("161b22"), outline=_c("30363d"), width=1 * S)
+    d.rounded_rectangle([bx, by3, bx + bw * 0.90, by3 + bh], radius=3 * S, fill=_c("a371f7"))
+
+    # 底部支架脚
+    d.line([(44 * S, 142 * S), (40 * S, 147 * S)], fill=_c("1f6feb"), width=3 * S)
+    d.line([(112 * S, 142 * S), (116 * S, 147 * S)], fill=_c("1f6feb"), width=3 * S)
+
+
 # ---------------------------------------------------------------------- 主体
 ICONS = {
     "radio": ("收音机", draw_radio, _c("f2d28b")),
     "bili": ("小电视", draw_bili, _c("fb7299")),
+    "glm": ("GLM", draw_glm, _c("38bdf8")),
 }
 
 
@@ -187,7 +251,10 @@ def main() -> int:
     img = generate(args.name)
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    out = args.out or os.path.join(root, "framework", "examples", args.name, "app_icon.png")
+    defaults = {
+        "glm": os.path.join(root, "miniapp", "glm_usage_app", "app_icon.png"),
+    }
+    out = args.out or defaults.get(args.name) or os.path.join(root, "framework", "examples", args.name, "app_icon.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     img.save(out)
     print(f"✅ 已生成 {out}  ({img.size[0]}×{img.size[1]})")
