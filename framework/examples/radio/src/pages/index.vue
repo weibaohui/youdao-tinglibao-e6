@@ -159,6 +159,7 @@
 <script>
 import buttonEventModule from 'buttonEvent';
 import soundPlayerModule from 'soundPlayer';
+import volumeModule from 'volume';
 import process from 'process';
 import RadioSettings from './radio_settings.js';
 const STATIONS = [
@@ -2117,6 +2118,17 @@ export default {
   created() {
     const self = this;
     this._sp = new soundPlayerModule.SoundPlayer();
+    this._masterVolume = 10;
+    try {
+      this._volume = new volumeModule.Volume();
+      if (this._volume.callBackVolumeValue && this._volume.callBackVolumeValue.on) {
+        this._volume.callBackVolumeValue.on(function (v) {
+          const n = Number(v);
+          if (!self._isFading && !isNaN(n) && n >= 0 && n <= 10) self._masterVolume = n;
+        });
+      }
+      this._volume.getVolume();
+    } catch (e) { this._volume = null; }
     this._radioSettingsIO = {
       load: async function (path) {
         const result = await process.exec('sh', ['-c', 'cat ' + path + ' 2>/dev/null'], { timeout: 3000 });
@@ -2655,6 +2667,9 @@ export default {
     async startPlayback() {
       const requestId = (this._playRequestId || 0) + 1;
       this._playRequestId = requestId;
+      const fadeBackTo = this._masterVolume;
+      if (this.playing && this._volume) await this.fadeOutput(0, 180);
+      if (requestId !== this._playRequestId) return;
       this.stopAll();
       this.playing = false;
       this.stateText = '连接中…';
@@ -2664,6 +2679,27 @@ export default {
       await this.ensureSoundPlayer();
       if (requestId !== this._playRequestId) return;
       this.playCurrent(requestId);
+      if (this._volume) await this.fadeOutput(fadeBackTo, 220);
+    },
+
+    fadeOutput(target, duration) {
+      const volume = this._volume;
+      if (!volume || !volume.setVolume) return Promise.resolve();
+      const from = this._fadeVolume == null ? this._masterVolume : this._fadeVolume;
+      this._isFading = true;
+      const steps = 4;
+      let step = 0;
+      return new Promise(resolve => {
+        const tick = () => {
+          step += 1;
+          const value = Math.max(0, Math.min(10, Math.round(from + (target - from) * step / steps)));
+          this._fadeVolume = value;
+          try { volume.setVolume(value); } catch (e) { /* 音量 API 不可用时保持原播放流程 */ }
+          if (step >= steps) { this._fadeVolume = target; this._isFading = false; resolve(); return; }
+          setTimeout(tick, Math.max(20, Math.floor(duration / steps)));
+        };
+        tick();
+      });
     },
 
     toggle() {
