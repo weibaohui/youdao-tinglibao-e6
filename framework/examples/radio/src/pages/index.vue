@@ -24,7 +24,8 @@
       <div class="statusrow">
         <div class="status-badge" @click="toggle" :style="{backgroundColor: playing ? '#132e1b' : '#1c2128', borderColor: playing ? '#238636' : (stateColor === '#d29922' ? '#9e6a03' : '#30363d')}">
           <div :style="{width:'6px',height:'6px',borderRadius:'3px',backgroundColor: playing ? '#3fb950' : stateColor,marginRight:'4px'}"></div>
-          <text :style="{color: playing ? '#3fb950' : stateColor,fontSize:'10px',fontWeight:'bold'}">{{ playing ? '播放中' : stateText }}</text>
+          <text v-if="playing" class="status-text" :style="{color:'#3fb950',fontSize:'10px',fontWeight:'bold'}">播放中</text>
+          <text v-else class="status-text" :style="{color:stateColor,fontSize:'10px',fontWeight:'bold'}">{{ stateText }}</text>
         </div>
         <div class="status-actions">
           <text :style="{color: randomMode ? '#e3b341' : '#8b949e',fontSize:'11px',marginRight:'8px'}">{{ randomMode ? '随机 · ' : '' }}{{ idx + 1 }} / {{ total }}</text>
@@ -2752,15 +2753,20 @@ export default {
 
 .statusrow {
   margin-top: 7px; height: 20px;
-  flex-direction: row; justify-content: space-between; align-items: center;
-  padding-left: 12px; padding-right: 12px;
+  position: relative; flex-direction: row; align-items: center;
 }
 .status-badge {
+  position: absolute; left: 12px; top: 1px;
   flex-direction: row; align-items: center;
+  width: 54px; min-width: 0; flex-shrink: 0;
   padding-left: 8px; padding-right: 9px; height: 18px;
   border-radius: 9px; border-width: 1px;
 }
-.status-actions { flex-direction: row; align-items: center; }
+.status-text { width: 36px; min-width: 0; lines: 1; text-overflow: ellipsis; }
+.status-actions {
+  position: absolute; right: 12px; top: 1px;
+  width: 54px; flex-direction: row; align-items: center; justify-content: flex-end;
+}
 .settings-shortcut { width: 34px; height: 22px; justify-content: center; align-items: center; background-color: #161b22; border-radius: 5px; }
 
 .stname-wrap {
