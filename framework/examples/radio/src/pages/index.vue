@@ -2132,22 +2132,47 @@ export default {
       else console.warn('[radio] loadFavs no promise: ' + typeof pr);
     } catch (e) { console.warn('[radio] loadFavs err: ' + e); }
 
-    const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
-    const be = new Ctor();
-    be.setButtonEventReady(true);
-    be.backButtonClick = function () {
-      if (self.view === 'list') {                       // 列表页：返回键=上一页，第 0 页再按才回主界面
-        if (self.pg > 0) { self.turnPage(-1); } else { self.view = 'main'; }
-        return;
-      }
-      self.cut(-1);
-    };
-    be.forwardButtonClick = function () {
-      if (self.view === 'list') { self.turnPage(1); return; }
-      self.cut(1);
-    };
-    be.playButtonClick = function () { self.toggle(); };
-    be.homeButtonClick = function () { self.toggle(); };
+    try {
+      const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
+      const be = new Ctor();
+      this._be = be;
+      if (be.setButtonEventReady) be.setButtonEventReady(true);
+
+      const onBack = () => {
+        console.warn('[radio] 物理按键触发: 上一首 (Back)');
+        if (self.view === 'list') {
+          if (self.pg > 0) { self.turnPage(-1); } else { self.view = 'main'; }
+          return;
+        }
+        self.cut(-1);
+      };
+      const onForward = () => {
+        console.warn('[radio] 物理按键触发: 下一首 (Forward)');
+        if (self.view === 'list') { self.turnPage(1); return; }
+        self.cut(1);
+      };
+      const onPlay = () => {
+        console.warn('[radio] 物理按键触发: 播放/暂停 (Play/Home)');
+        self.toggle();
+      };
+
+      const bindSig = (sig, fn) => {
+        if (!sig) return;
+        if (typeof sig.on === 'function') {
+          sig.on(fn);
+        } else if (typeof sig.connect === 'function') {
+          sig.connect(fn);
+        }
+      };
+
+      bindSig(be.backButtonClick, onBack);
+      bindSig(be.forwardButtonClick, onForward);
+      bindSig(be.playButtonClick, onPlay);
+      bindSig(be.homeButtonClick, onPlay);
+      console.warn('[radio] 物理按键(上一首/下一首/播放暂停)监听就绪');
+    } catch (e) {
+      console.warn('[radio] buttonEvent 注册异常: ' + e);
+    }
 
     this._wave = setInterval(function () {
       if (self.view !== 'main') return;   // 列表页不刷新频谱，避免整页重渲染卡顿
