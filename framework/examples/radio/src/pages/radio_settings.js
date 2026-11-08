@@ -29,7 +29,9 @@ function doSaveNow(state) {
     favs: favKeys,
     vizStyle: typeof state.vizStyle === 'number' ? state.vizStyle : 8,
     colorTheme: state.colorTheme || 'rainbow',
+    specMode: state.specMode || 'real',
     randomMode: !!state.randomMode,
+    randomScope: state.randomScope || 'cn',
     sleepMinutes: state._sleepMinutes || 0,
     sleepUntil: state._sleepUntil || 0
   };
@@ -43,6 +45,7 @@ function doSaveNow(state) {
   // 2. 兼容性多文件同步（供系统其他模块或旧脚本读取）
   const legacySettings = JSON.stringify({
     randomMode: cfg.randomMode,
+    randomScope: cfg.randomScope || 'cn',
     vizStyle: cfg.vizStyle,
     colorTheme: cfg.colorTheme,
     sleepUntil: cfg.sleepUntil,
@@ -191,10 +194,11 @@ export default {
       state._favSeq = (state._favSeq || 0) + 1;
     }
 
-    // 4. 频谱样式与色彩
+    // 4. 频谱样式与色彩及律动模式
     if (typeof config.vizStyle === 'number' && config.vizStyle >= 0 && config.vizStyle <= 8) {
       state.vizStyle = config.vizStyle;
     }
+    state.specMode = config.specMode === 'sim' ? 'sim' : 'real';
     if (config.colorTheme) {
       state.colorTheme = config.colorTheme;
       if (typeof state.applyColorLut === 'function') {
@@ -204,6 +208,7 @@ export default {
 
     // 5. 随机模式与定时
     state.randomMode = !!config.randomMode;
+    state.randomScope = config.randomScope || 'cn';
     state._sleepMinutes = config.sleepMinutes || 0;
     if (config.sleepUntil > Date.now()) {
       updateTimer(state, config.sleepUntil);
@@ -251,6 +256,18 @@ export default {
     scheduleSave(state);
   },
 
+  setSpecMode(state, mode) {
+    state.specMode = mode === 'sim' ? 'sim' : 'real';
+    scheduleSave(state);
+  },
+
+  cycleSpecMode(state) {
+    const next = state.specMode === 'real' ? 'sim' : 'real';
+    state.specMode = next;
+    scheduleSave(state);
+    return next;
+  },
+
   setColorTheme(state, themeKey) {
     state.colorTheme = themeKey;
     scheduleSave(state);
@@ -259,6 +276,20 @@ export default {
   toggleRandom(state) {
     state.randomMode = !state.randomMode;
     scheduleSave(state);
+  },
+
+  setRandomScope(state, scope) {
+    state.randomScope = scope;
+    scheduleSave(state);
+  },
+
+  cycleRandomScope(state) {
+    const scopes = ['cn', 'intl', 'all', 'fav'];
+    const cur = state.randomScope || 'cn';
+    const next = scopes[(scopes.indexOf(cur) + 1) % scopes.length];
+    state.randomScope = next;
+    scheduleSave(state);
+    return next;
   },
 
   cycleSleep(state) {
