@@ -2946,14 +2946,14 @@ export default {
 
       // ★★★【核心安全机制：切台/播放二次安全重试与补发拉流】★★★
       // 警示：以后绝对不可擅自删除此段逻辑！
-      // 原因：列表点选切台同样需要 1200ms 安全补发保障弱网与旧连接释放间隙的起播成功率。
+      // 原因：列表点选切台同样需要 2000ms 安全补发保障弱网与旧连接释放间隙的起播成功率。
       // 严格保证：此处纯粹只调用 this.startPlayback() 重新拉流，绝不触碰任何硬件音量或修改音量状态！
       const stationIndex = this.idx;
       setTimeout(() => {
         if (this.idx !== stationIndex || this.view !== 'main' || this.settingsOpen) return;
         console.warn('[radio] 列表切台后安全补发一次拉流请求', stationIndex + 1, this.STATIONS[stationIndex].u);
         this.startPlayback();
-      }, 1200);
+      }, 2000);
     },
 
     saveLastStation(idx) {
@@ -3057,7 +3057,7 @@ export default {
       // ★★★【核心安全机制：切台/播放二次安全重试与补发拉流】★★★
       // 警示：以后绝对不可擅自删除此段逻辑！
       // 原因：RV1106 底层 SoundPlayer 在连续快速切台或网络流握手偶发超时时，
-      // 首次拉流可能因旧连接尚未完全断开而无声。延时 1200ms 补发一次拉流请求，
+      // 首次拉流可能因旧连接尚未完全断开而无声。延时 2000ms 补发一次拉流请求，
       // 能极大提高弱网/切台的起播成功率。
       // 严格保证：此处纯粹只调用 this.startPlayback() 重新拉流，绝不触碰任何硬件音量或修改音量状态！
       const stationIndex = this.idx;
@@ -3065,7 +3065,7 @@ export default {
         if (this.idx !== stationIndex || this.view !== 'main' || this.settingsOpen) return;
         console.warn('[radio] 切台后安全补发一次拉流请求', stationIndex + 1, this.STATIONS[stationIndex].u);
         this.startPlayback();
-      }, 1200);
+      }, 2000);
     },
 
     async ensureSoundPlayer() {
