@@ -102,13 +102,13 @@ func specOutputLoop() {
 			// 根据真实音频能量驱动 16 根柱子
 			for k := 0; k < 16; k++ {
 				t := float64(k) / 15.0
-				// 低频由主能量驱动，高频由高频特征主导
-				bandEnergy := (1.0-t)*rawG*1.3 + t*rawH*1.4
+				// 低频由主能量驱动，高频由高频特征主导（自然动态分布，不顶天）
+				bandEnergy := (1.0-t)*rawG*0.75 + t*rawH*0.80
 				// 各自的自然律动相位
 				wave := math.Sin(phase*1.5 + float64(k)*0.45)
-				flutter := (wave*0.15 + 0.85) * (0.9 + r.Float64()*0.2)
+				flutter := (wave*0.18 + 0.82) * (0.85 + r.Float64()*0.3)
 				target := bandEnergy * flutter
-				target = math.Max(0.08, math.Min(0.96, target))
+				target = math.Max(0.06, math.Min(0.88, target))
 
 				// 响应速度：低频升快降慢，高频更敏捷
 				if target > prevCols[k] {
@@ -211,11 +211,12 @@ func processStream(streamURL string, stop <-chan struct{}, gen int64) {
 							(uint64(side[4]) << 8) | uint64(side[5])
 						gainRaw := float64((bits >> 7) & 0xFF)
 						if gainRaw > 10 && gainRaw < 220 {
-							g := (gainRaw - 24.0) / 58.0
-							if g < 0 {
-								g = 0
-							} else if g > 1 {
-								g = 1
+							// 真实 MP3 音乐动态范围归一化
+							g := (gainRaw - 30.0) / 48.0
+							if g < 0.05 {
+								g = 0.05
+							} else if g > 0.85 {
+								g = 0.85
 							}
 							mp3Gain = g
 							foundHeader = true
@@ -224,7 +225,7 @@ func processStream(streamURL string, stop <-chan struct{}, gen int64) {
 					}
 				}
 
-				// 2. 超轻量字节差分熵能量（万能兜底，AAC/MP3/高低码率通用，仅几十微秒）
+				// 2. 超轻量字节差分熵能量（万能兜底，保持自然 0.2~0.7 动态起伏）
 				var sumDiff float64
 				var zeroCross int
 				for j := 1; j < n; j++ {
@@ -234,13 +235,16 @@ func processStream(streamURL string, stop <-chan struct{}, gen int64) {
 						zeroCross++
 					}
 				}
-				entropyEnergy := sumDiff / float64(n*85.0)
-				if entropyEnergy > 1.0 {
-					entropyEnergy = 1.0
+				avgDiff := sumDiff / float64(n)
+				entropyEnergy := (avgDiff - 45.0) / 65.0
+				if entropyEnergy < 0.08 {
+					entropyEnergy = 0.08
+				} else if entropyEnergy > 0.85 {
+					entropyEnergy = 0.85
 				}
 				highRatio := float64(zeroCross) / (float64(n) * 0.5)
-				if highRatio > 1.0 {
-					highRatio = 1.0
+				if highRatio > 0.85 {
+					highRatio = 0.85
 				}
 
 				var finalGain float64

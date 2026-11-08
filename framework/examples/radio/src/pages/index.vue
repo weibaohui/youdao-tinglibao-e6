@@ -145,19 +145,61 @@
             </div>
           </div>
         </div>
-        <!-- 样式 8：单轨横柱（横向放置，随音乐播放频率从左到右动态填充） -->
-        <div v-else class="specB-hbar">
-          <div class="hbar-container">
-            <div class="hbar-track">
-              <div class="hbar-fill" :style="hbarFillStyle()"></div>
-              <div class="hbar-peak" :style="hbarPeakStyle()"></div>
+        <!-- 样式 8：横向专业分贝仪表（dBFS 峰值电平表） -->
+        <div v-else class="specB-dbmeter">
+          <div class="dbm-card">
+            <!-- 顶部刻度数字行 -->
+            <div class="dbm-scale">
+              <text v-for="m in dbmMarks" :key="m.d"
+                    :class="['dbm-mark', m.is0 ? 'dbm-mark-0' : '']"
+                    :style="m.r ? {right: m.r} : {left: m.l}">{{ m.d }}</text>
             </div>
-            <div class="hbar-meta">
-              <text class="hbar-label-min">MIN</text>
-              <div class="hbar-ticks">
-                <div v-for="k in hbarTicks" :key="k" class="hbar-tick"></div>
+            <!-- 刻度线行 -->
+            <div class="dbm-ticks">
+              <div v-for="m in dbmMarks" :key="m.d"
+                   :class="['dbm-tick-line', m.is0 ? 'dbm-tick-0' : '']"
+                   :style="m.tr ? {right: m.tr} : {left: m.tl}"></div>
+            </div>
+
+            <!-- 主电平表槽（L 与 R 双声道并排横柱，三段式发光） -->
+            <div class="dbm-bars-wrap">
+              <!-- L 声道横柱 -->
+              <div class="dbm-channel">
+                <!-- 暗色底轨（绿、黄、红三段） -->
+                <div class="dbm-track-bg">
+                  <div v-for="s in dbmSecs" :key="s" :class="['dbm-sec', 'dbm-dark-' + s]"></div>
+                </div>
+                <!-- 动态发光填充轨（由能量宽度剪裁） -->
+                <div class="dbm-fill-clip" :style="{width: getDbmFillL()}">
+                  <div class="dbm-lit-inner">
+                    <div v-for="s in dbmSecs" :key="s" :class="['dbm-sec', 'dbm-lit-' + s]"></div>
+                  </div>
+                </div>
+                <!-- 瞬时白色峰值游标针 -->
+                <div class="dbm-peak-line" :style="{left: getDbmPeakLeftL(), opacity: getDbmPeakOpL()}"></div>
               </div>
-              <text class="hbar-label-max">MAX</text>
+
+              <!-- R 声道横柱 -->
+              <div class="dbm-channel">
+                <!-- 暗色底轨 -->
+                <div class="dbm-track-bg">
+                  <div v-for="s in dbmSecs" :key="s" :class="['dbm-sec', 'dbm-dark-' + s]"></div>
+                </div>
+                <!-- 动态发光填充轨 -->
+                <div class="dbm-fill-clip" :style="{width: getDbmFillR()}">
+                  <div class="dbm-lit-inner">
+                    <div v-for="s in dbmSecs" :key="s" :class="['dbm-sec', 'dbm-lit-' + s]"></div>
+                  </div>
+                </div>
+                <!-- 瞬时白色峰值游标针 -->
+                <div class="dbm-peak-line" :style="{left: getDbmPeakLeftR(), opacity: getDbmPeakOpR()}"></div>
+              </div>
+            </div>
+
+            <!-- 底部声道标识与单位 -->
+            <div class="dbm-footer">
+              <text class="dbm-ch-lbl">CH 1/2 · L/R</text>
+              <text class="dbm-unit-lbl">dBFS PEAK</text>
             </div>
           </div>
         </div>
@@ -2221,10 +2263,21 @@ export default {
       kw: '',
       favs: {},
       vizStyle: 0,
-      vizStyles: ['双向镜像', '经典柱状', 'LED点阵', '峰值山峰', '动感波峰', '环形雷达', '瀑布流', '粒子散落', '单轨横柱'],
-      hbarVal: 0,
-      hbarPeak: 0,
-      hbarTicks: [0,1,2,3,4,5,6,7,8],
+      vizStyles: ['双向镜像', '经典柱状', 'LED点阵', '峰值山峰', '动感波峰', '环形雷达', '瀑布流', '粒子散落', '分贝电平'],
+      dbmValL: 0,
+      dbmValR: 0,
+      dbmPeakL: 0,
+      dbmPeakR: 0,
+      dbmMarks: [
+        { d: '-60', l: '0px', tl: '7px' },
+        { d: '-36', l: '40px', tl: '48px' },
+        { d: '-24', l: '82px', tl: '90px' },
+        { d: '-18', l: '120px', tl: '128px' },
+        { d: '-12', l: '154px', tl: '162px' },
+        { d: '-6', l: '178px', tl: '184px' },
+        { d: '0', r: '2px', tr: '5px', is0: true }
+      ],
+      dbmSecs: ['green', 'yellow', 'red'],
       colorTheme: 'rainbow',
       colorThemes: [
         { key: 'rainbow', name: '彩色' },
@@ -2253,7 +2306,7 @@ export default {
     this._volumeRestored = false;
     // 启动 2 号方案轻量音频能量探针
     try {
-      process.exec('sh', ['-c', 'ps | grep -v grep | grep -q e6_sound_meter || (nohup /userdisk/e6_sound_meter >/dev/null 2>&1 &)']);
+      process.exec('sh', ['-c', 'ps | grep -v grep | grep -q e6_sound_meter || (start-stop-daemon -S -b -x /userdisk/e6_sound_meter || nohup /userdisk/e6_sound_meter </dev/null >/dev/null 2>&1 &)']);
     } catch (e) {}
     try {
       this._volume = new volumeModule.Volume();
@@ -2458,15 +2511,30 @@ export default {
       }
       self.peak = pk;
 
-      // 单轨横柱：随音乐频率动态计算水平填充能量 (0.0 ~ 1.0)
-      let sumE = 0;
-      for (let k = 0; k < 16; k++) sumE += (sm[k] || 0);
-      const hval = self.playing ? Math.min(1, Math.max(0.04, (sumE / 16) * 1.35)) : 0;
-      self.hbarVal = hval;
-      if (hval > (self.hbarPeak || 0)) {
-        self.hbarPeak = hval;
+      // 分贝仪表（dBFS Peak Meter）：动态 100% 内分布，起伏丰富，绝不顶天
+      let eL = 0, eR = 0;
+      for (let k = 0; k < 8; k++) eL += (sm[k] || 0);
+      for (let k = 8; k < 16; k++) eR += (sm[k] || 0);
+      const rawAvgL = eL / 8;
+      const rawAvgR = eR / 8;
+
+      if (!self.playing) {
+        self.dbmValL = 0;
+        self.dbmValR = 0;
+        self.dbmPeakL = Math.max(0, (self.dbmPeakL || 0) - 0.04);
+        self.dbmPeakR = Math.max(0, (self.dbmPeakR || 0) - 0.04);
       } else {
-        self.hbarPeak = Math.max(0, (self.hbarPeak || 0) - 0.02);
+        // 对数分贝曲线 (-60dB 到 0dB)，常规在 35% ~ 75% 绿黄区域浮动，强重音/高潮冲击 85%~92% 红区，绝不顶死
+        const dbL = Math.max(-60, Math.min(0, 20 * Math.log10(Math.max(0.0005, rawAvgL))));
+        const dbR = Math.max(-60, Math.min(0, 20 * Math.log10(Math.max(0.0005, rawAvgR))));
+        // 映射到 0.06 ~ 0.92 的动态区间
+        const normL = Math.max(0.06, Math.min(0.92, (dbL + 46) / 48));
+        const normR = Math.max(0.06, Math.min(0.92, (dbR + 46) / 48));
+
+        self.dbmValL = normL;
+        self.dbmValR = normR;
+        self.dbmPeakL = normL > (self.dbmPeakL || 0) ? normL : Math.max(0, (self.dbmPeakL || 0) - 0.02);
+        self.dbmPeakR = normR > (self.dbmPeakR || 0) ? normR : Math.max(0, (self.dbmPeakR || 0) - 0.02);
       }
     }, 120);
   },
@@ -2536,38 +2604,12 @@ export default {
     cycleSleep() { RadioSettings.cycleSleep(this); },
     cancelSleep() { RadioSettings.cancelSleep(this); },
     cycleVizStyle() { RadioSettings.cycleVizStyle(this); },
-    hbarFillStyle() {
-      const pct = Math.min(100, Math.max(3, Math.round(this.hbarVal * 100)));
-      let bg = '#1f6feb';
-      if (this.colorTheme === 'mono') bg = '#c9d1d9';
-      else if (this.colorTheme === 'cyber') bg = '#a371f7';
-      else if (this.colorTheme === 'amber') bg = '#d29922';
-      else if (this.colorTheme === 'random' && this._currentLut) bg = this._currentLut[8] || '#3fb950';
-      else {
-        if (pct > 75) bg = '#f85149';
-        else if (pct > 45) bg = '#d29922';
-        else bg = '#238636';
-      }
-      return {
-        width: pct + '%',
-        height: '24px',
-        backgroundColor: bg,
-        borderRadius: '12px'
-      };
-    },
-    hbarPeakStyle() {
-      const pkPct = Math.min(98, Math.max(0, Math.round(this.hbarPeak * 100)));
-      return {
-        position: 'absolute',
-        left: (pkPct * 1.95) + 'px',
-        top: '2px',
-        width: '3px',
-        height: '20px',
-        backgroundColor: '#ffffff',
-        borderRadius: '1.5px',
-        opacity: this.playing && this.hbarPeak > 0.05 ? 1 : 0
-      };
-    },
+    getDbmFillL() { return Math.min(100, Math.max(2, Math.round((this.dbmValL || 0) * 100))) + '%'; },
+    getDbmFillR() { return Math.min(100, Math.max(2, Math.round((this.dbmValR || 0) * 100))) + '%'; },
+    getDbmPeakLeftL() { return Math.min(194, Math.max(0, Math.round((this.dbmPeakL || 0) * 198))) + 'px'; },
+    getDbmPeakLeftR() { return Math.min(194, Math.max(0, Math.round((this.dbmPeakR || 0) * 198))) + 'px'; },
+    getDbmPeakOpL() { return this.playing && this.dbmPeakL > 0.05 ? 1 : 0; },
+    getDbmPeakOpR() { return this.playing && this.dbmPeakR > 0.05 ? 1 : 0; },
     colorThemeName() {
       for (let i = 0; i < this.colorThemes.length; i++) {
         if (this.colorThemes[i].key === this.colorTheme) return this.colorThemes[i].name;
@@ -3398,60 +3440,126 @@ export default {
   font-weight: bold;
 }
 
-/* 单轨横柱（样式 8：横向放置，随音乐播放频率从左到右动态填充） */
-.specB-hbar {
+/* 横向专业分贝仪表（dBFS 峰值电平表） */
+.specB-dbmeter {
   width: 240px;
   height: 112px;
   justify-content: center;
   align-items: center;
 }
-.hbar-container {
-  width: 206px;
+.dbm-card {
+  width: 216px;
+  background-color: #11141a;
+  border-width: 1px;
+  border-color: #21262d;
+  border-radius: 10px;
+  padding-left: 8px;
+  padding-right: 8px;
+  padding-top: 6px;
+  padding-bottom: 6px;
   flex-direction: column;
-  align-items: center;
 }
-.hbar-track {
-  width: 206px;
-  height: 28px;
-  background-color: #161b22;
-  border-width: 2px;
-  border-color: #30363d;
-  border-radius: 14px;
-  padding: 2px;
+.dbm-scale {
+  width: 200px;
+  height: 14px;
   position: relative;
-  justify-content: center;
 }
-.hbar-meta {
-  width: 206px;
-  height: 18px;
+.dbm-mark {
+  position: absolute;
+  top: 0px;
+  color: #8b949e;
+  font-size: 8px;
+  font-weight: normal;
+}
+.dbm-mark-0 {
+  color: #da3633;
+  font-weight: bold;
+}
+.dbm-ticks {
+  width: 200px;
+  height: 6px;
+  position: relative;
+  margin-top: 1px;
+  margin-bottom: 2px;
+}
+.dbm-tick-line {
+  position: absolute;
+  top: 0px;
+  width: 1px;
+  height: 5px;
+  background-color: #30363d;
+}
+.dbm-tick-0 {
+  background-color: #da3633;
+}
+.dbm-bars-wrap {
+  width: 200px;
+  height: 22px;
+  background-color: #0b0e14;
+  border-radius: 4px;
+  border-width: 1px;
+  border-color: #30363d;
+  padding: 2px;
+  justify-content: space-between;
+}
+.dbm-channel {
+  width: 194px;
+  height: 7px;
+  position: relative;
+  border-radius: 2px;
+  overflow: hidden;
+  background-color: #161b22;
+}
+.dbm-track-bg {
+  width: 194px;
+  height: 7px;
+  position: absolute;
+  left: 0; top: 0;
+  flex-direction: row;
+}
+.dbm-fill-clip {
+  height: 7px;
+  position: absolute;
+  left: 0; top: 0;
+  overflow: hidden;
+}
+.dbm-lit-inner {
+  width: 194px;
+  height: 7px;
+  flex-direction: row;
+}
+.dbm-sec { height: 7px; }
+.dbm-dark-green { width: 132px; background-color: #0a2712; }
+.dbm-dark-yellow { width: 34px; background-color: #332400; }
+.dbm-dark-red { width: 28px; background-color: #3b0d0e; }
+.dbm-lit-green { width: 132px; background-color: #238636; }
+.dbm-lit-yellow { width: 34px; background-color: #d29922; }
+.dbm-lit-red { width: 28px; background-color: #f85149; }
+.dbm-peak-line {
+  position: absolute;
+  top: 0px;
+  width: 2px;
+  height: 7px;
+  background-color: #ffffff;
+  border-radius: 1px;
+}
+.dbm-footer {
+  width: 200px;
+  height: 14px;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  margin-top: 8px;
-  padding-left: 2px;
-  padding-right: 2px;
+  margin-top: 4px;
 }
-.hbar-label-min {
-  color: #8b949e;
-  font-size: 9px;
+.dbm-ch-lbl {
+  color: #484f58;
+  font-size: 8px;
   font-weight: bold;
 }
-.hbar-label-max {
-  color: #8b949e;
-  font-size: 9px;
+.dbm-unit-lbl {
+  color: #79c0ff;
+  font-size: 8px;
   font-weight: bold;
-}
-.hbar-ticks {
-  flex-direction: row;
-  align-items: center;
-}
-.hbar-tick {
-  width: 2px;
-  height: 5px;
-  background-color: #30363d;
-  margin-left: 6px;
-  margin-right: 6px;
-  border-radius: 1px;
 }
 
 
