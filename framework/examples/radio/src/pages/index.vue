@@ -2262,7 +2262,7 @@ export default {
       tab: 'all',
       kw: '',
       favs: {},
-      vizStyle: 0,
+      vizStyle: 8,
       vizStyles: ['双向镜像', '经典柱状', 'LED点阵', '峰值山峰', '动感波峰', '环形雷达', '瀑布流', '粒子散落', '分贝电平'],
       dbmValL: 0,
       dbmValR: 0,
@@ -2300,249 +2300,15 @@ export default {
   },
 
   created() {
-    const self = this;
-    this._sp = new soundPlayerModule.SoundPlayer();
-    this._masterVolume = 50;
-    this._volumeRestored = false;
-    // 启动 2 号方案轻量音频能量探针
-    try {
-      process.exec('sh', ['-c', 'ps | grep -v grep | grep -q e6_sound_meter || (start-stop-daemon -S -b -x /userdisk/e6_sound_meter || nohup /userdisk/e6_sound_meter </dev/null >/dev/null 2>&1 &)']);
-    } catch (e) {}
-    try {
-      this._volume = new volumeModule.Volume();
-      if (this._volume.callBackVolumeValue && this._volume.callBackVolumeValue.on) {
-        this._volume.callBackVolumeValue.on(function (v) {
-          const n = Number(v);
-          if (isNaN(n) || n < 0 || n > 100) return;
-          self._masterVolume = n;
-          self.volumeLevel = n;
-          if (!self._volumeRestored) {
-            self._volumeRestored = true;
-            process.exec('sh', ['-c', 'cat /userdisk/radio_volume.txt 2>/dev/null'], { timeout: 2000 }).then(function (r) {
-              const saved = parseInt(String((r && r.stdout) || '').trim(), 10);
-              if (!isNaN(saved) && saved >= 0 && saved <= 100 && self._volume) {
-                self._masterVolume = saved;
-                self.volumeLevel = saved;
-                self._volume.setVolume(saved);
-              }
-            }).catch(function () {});
-          }
-        });
-      }
-      this._volume.getVolume();
-    } catch (e) { this._volume = null; }
-    this._radioSettingsIO = {
-      load: async function (path) {
-        const result = await process.exec('sh', ['-c', 'cat ' + path + ' 2>/dev/null'], { timeout: 3000 });
-        return result && result.stdout;
-      },
-      save: function (path, value) {
-        const request = process.exec('sh', ['-c', "echo '" + value + "' > " + path]);
-        if (request && request.catch) request.catch(function () {});
-      }
-    };
-    RadioSettings.load(this._radioSettingsIO).then(function (settings) { RadioSettings.apply(self, settings); });
-    this._rows = null; this._rowsSig = ''; this._favSeq = 0;  // listItems 记忆化（非响应式）
-
-    this.applyColorLut(this.colorTheme || 'rainbow');
-    this._specHist = [];   // 瀑布历史帧（每帧 unshift 当前 spec，保留 3 帧）
-
-    /* 读收藏（/userdisk/radio_fav.txt，逗号分隔的台号） */
-    try {
-      console.warn('[radio] loadFavs start');
-      const pr = process.exec('sh', ['-c', 'cat /userdisk/radio_fav.txt 2>/dev/null'], { timeout: 5000 });
-      if (pr && pr.then) pr.then(function (r) {
-        const f = {};
-        const out = r && r.stdout ? String(r.stdout) : '';
-        console.warn('[radio] favs raw: [' + out + ']');
-        const parts = out.replace(/\s+/g, '').split(',');
-        for (let i = 0; i < parts.length; i++) {
-          const v = parseInt(parts[i], 10);
-          if (!isNaN(v) && v >= 0 && v < STATIONS.length) f[v] = true;
-        }
-        self.favs = f;
-        self._favSeq = (self._favSeq || 0) + 1;  // 失效列表缓存
-      }, function (rej) { console.warn('[radio] loadFavs rejected: ' + rej); });
-      else console.warn('[radio] loadFavs no promise: ' + typeof pr);
-    } catch (e) { console.warn('[radio] loadFavs err: ' + e); }
-
-    /* 读上次收听的电台；等按需启动的 SoundPlayer 就绪后再开始拉流。 */
-    try {
-      const prLast = process.exec('sh', ['-c', 'cat /userdisk/radio_last.txt 2>/dev/null'], { timeout: 3000 });
-      if (prLast && prLast.then) {
-        prLast.then(function (r) {
-          const out = r && r.stdout ? String(r.stdout).trim() : '';
-          const lastIdx = parseInt(out, 10);
-          if (!isNaN(lastIdx) && lastIdx >= 0 && lastIdx < STATIONS.length) {
-            self.idx = lastIdx;
-            self.stName = STATIONS[lastIdx].n;
-          }
-          self.startPlayback();
-        }, function () {
-          self.startPlayback();
-        });
-      } else {
-        self.startPlayback();
-      }
-    } catch (e) {
-      self.startPlayback();
-    }
-
-    try {
-      const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
-      const be = new Ctor();
-      this._be = be;
-      if (be.setButtonEventReady) be.setButtonEventReady(true);
-
-      const onBack = () => {
-        console.warn('[radio] 物理按键触发: 上一首 (Back)');
-        if (self.settingsOpen) { self.closeSettings(); return; }
-        if (self.view === 'list') {
-          if (self.pg > 0) { self.turnPage(-1); } else { self.view = 'main'; }
-          return;
-        }
-        self.cut(-1);
-      };
-      const onForward = () => {
-        console.warn('[radio] 物理按键触发: 下一首 (Forward)');
-        if (self.view === 'list') { self.turnPage(1); return; }
-        self.cut(1);
-      };
-      const onPlay = () => {
-        console.warn('[radio] 物理按键触发: 播放/暂停 (Play/Home)');
-        self.toggle();
-      };
-
-      const bindSig = (sig, fn) => {
-        if (!sig) return;
-        if (typeof sig.on === 'function') {
-          sig.on(fn);
-        } else if (typeof sig.connect === 'function') {
-          sig.connect(fn);
-        }
-      };
-
-      bindSig(be.backButtonClick, onBack);
-      bindSig(be.forwardButtonClick, onForward);
-      bindSig(be.playButtonClick, onPlay);
-      const adjustVolume = (direction) => {
-        const current = this._masterVolume;
-        const target = Math.max(0, Math.min(100, current + direction));
-        try { if (this._volume) this._volume.setVolume(target); } catch (e) {}
-        this._masterVolume = target;
-        this.volumeLevel = target;
-        process.exec('sh', ['-c', 'echo ' + target + ' > /userdisk/radio_volume.txt']);
-      };
-      bindSig(be.volumeUpButtonClick, () => adjustVolume(1));
-      bindSig(be.volumeDownButtonClick, () => adjustVolume(-1));
-      console.warn('[radio] 物理按键(上一首/下一首/播放暂停)监听就绪');
-    } catch (e) {
-      console.warn('[radio] buttonEvent 注册异常: ' + e);
-    }
-
-    // 2 号方案：轮询真实音频帧能量文件 /tmp/e6_spec.raw
-    this._realSpec = null;
-    this._lastRealSpecTime = 0;
-    this._specPoll = setInterval(function () {
-      if (self.view !== 'main' || self.settingsOpen || !self.playing) return;
-      process.exec('sh', ['-c', 'cat /tmp/e6_spec.raw 2>/dev/null'], { timeout: 300 }).then(function (r) {
-        const out = (r && r.stdout) ? String(r.stdout).trim() : '';
-        if (out) {
-          const parts = out.split(',');
-          if (parts.length === 16) {
-            const vals = [];
-            for (let k = 0; k < 16; k++) {
-              vals.push(parseFloat(parts[k]) || 0.08);
-            }
-            self._realSpec = vals;
-            self._lastRealSpecTime = Date.now();
-          }
-        }
-      }).catch(function () {});
-    }, 120);
-
-    this._wave = setInterval(function () {
-      if (self.view !== 'main' || self.settingsOpen) return;
-      const cur = self.spec;
-      if (!self.playing) {
-        // 暂停时保持微波底纹，界面始终活泼美观且结构完全统一
-        const rst = [];
-        const rst2 = [];
-        const t = Date.now() / 600;
-        for (let i = 0; i < 16; i++) {
-          const calm = 0.08 + Math.sin(t + i * 0.45) * 0.035;
-          rst.push(calm);
-          rst2.push(calm);
-        }
-        self.spec = rst;
-        self.peak = rst2;
-        return;
-      }
-
-      // 2 号方案真实音频随动：优先消费来自网络流的瞬时真实频带能量
-      const isRealFresh = self._realSpec && (Date.now() - (self._lastRealSpecTime || 0) < 800);
-      const next = [];
-      for (let i = 0; i < 16; i++) {
-        let target;
-        if (isRealFresh) {
-          target = self._realSpec[i];
-        } else {
-          const r = Math.random();
-          target = r * r;
-        }
-        next.push(target > cur[i] ? (cur[i] * 0.25 + target * 0.75) : cur[i] * 0.84);
-      }
-      // 相邻平滑：有机律动
-      const sm = [];
-      for (let j = 0; j < 16; j++) {
-        const l = j > 0 ? next[j - 1] : next[j];
-        const r2 = j < 15 ? next[j + 1] : next[j];
-        sm.push((l + 2 * next[j] + r2) / 4);
-      }
-      self.spec = sm;
-      // 瀑布历史：unshift 当前帧，保留最近 3 帧
-      self._specHist.unshift(sm.slice());
-      if (self._specHist.length > 3) self._specHist.length = 3;
-      // 峰值：只升不降（命中新高即顶），每帧缓降 0.025
-      const pk = [];
-      for (let k2 = 0; k2 < 16; k2++) {
-        const p0 = self.peak[k2] || 0;
-        pk.push(sm[k2] > p0 ? sm[k2] : Math.max(0, p0 - 0.025));
-      }
-      self.peak = pk;
-
-      // 分贝仪表（dBFS Peak Meter）：动态 100% 内分布，起伏丰富，绝不顶天
-      let eL = 0, eR = 0;
-      for (let k = 0; k < 8; k++) eL += (sm[k] || 0);
-      for (let k = 8; k < 16; k++) eR += (sm[k] || 0);
-      const rawAvgL = eL / 8;
-      const rawAvgR = eR / 8;
-
-      if (!self.playing) {
-        self.dbmValL = 0;
-        self.dbmValR = 0;
-        self.dbmPeakL = Math.max(0, (self.dbmPeakL || 0) - 0.04);
-        self.dbmPeakR = Math.max(0, (self.dbmPeakR || 0) - 0.04);
-      } else {
-        // 对数分贝曲线 (-60dB 到 0dB)，常规在 35% ~ 75% 绿黄区域浮动，强重音/高潮冲击 85%~92% 红区，绝不顶死
-        const dbL = Math.max(-60, Math.min(0, 20 * Math.log10(Math.max(0.0005, rawAvgL))));
-        const dbR = Math.max(-60, Math.min(0, 20 * Math.log10(Math.max(0.0005, rawAvgR))));
-        // 映射到 0.06 ~ 0.92 的动态区间
-        const normL = Math.max(0.06, Math.min(0.92, (dbL + 46) / 48));
-        const normR = Math.max(0.06, Math.min(0.92, (dbR + 46) / 48));
-
-        self.dbmValL = normL;
-        self.dbmValR = normR;
-        self.dbmPeakL = normL > (self.dbmPeakL || 0) ? normL : Math.max(0, (self.dbmPeakL || 0) - 0.02);
-        self.dbmPeakR = normR > (self.dbmPeakR || 0) ? normR : Math.max(0, (self.dbmPeakR || 0) - 0.02);
-      }
-    }, 120);
+    this.initApp();
+    this.startWaveLoop();
   },
 
   beforeDestroy() {
     if (this._specClickTimer) clearTimeout(this._specClickTimer);
     if (this._wave) clearInterval(this._wave);
     if (this._specPoll) clearInterval(this._specPoll);
+    try { RadioSettings.flush(this); } catch (e) {}
     this.stopAll();
   },
 
@@ -2550,10 +2316,238 @@ export default {
     if (this._specClickTimer) clearTimeout(this._specClickTimer);
     if (this._wave) clearInterval(this._wave);
     if (this._specPoll) clearInterval(this._specPoll);
+    try { RadioSettings.flush(this); } catch (e) {}
     this.stopAll();
   },
 
   methods: {
+    async initApp() {
+      const self = this;
+      this._sp = new soundPlayerModule.SoundPlayer();
+      this._masterVolume = 50;
+      this._volumeRestored = false;
+      this._rows = null; this._rowsSig = ''; this._favSeq = 0;
+      this._specHist = [];
+
+      // 1. 启动 2 号方案轻量音频能量探针
+      try {
+        process.exec('sh', ['-c', 'ps | grep -v grep | grep -q e6_sound_meter || (start-stop-daemon -S -b -x /userdisk/e6_sound_meter || nohup /userdisk/e6_sound_meter </dev/null >/dev/null 2>&1 &)']);
+      } catch (e) {}
+
+      // 2. 初始化硬件音量模块
+      try {
+        this._volume = new volumeModule.Volume();
+        if (this._volume.callBackVolumeValue && this._volume.callBackVolumeValue.on) {
+          this._volume.callBackVolumeValue.on(function (v) {
+            const n = Number(v);
+            if (isNaN(n) || n < 0 || n > 100) return;
+            // 若配置尚未完成加载恢复，忽略硬件初始不确定值（防覆盖）
+            if (!self._volumeRestored) return;
+            self._masterVolume = n;
+            self.volumeLevel = n;
+            RadioSettings.setVolume(self, n);
+          });
+        }
+      } catch (e) { this._volume = null; }
+
+      // 3. 构建高可靠 IO 引擎（argv cat 优先，sh -c 兜底，安全转义防单引号）
+      const io = {
+        async readFile(path, timeout) {
+          const to = timeout || 3000;
+          try {
+            const r = await process.exec('cat', [path], { timeout: to });
+            const out = String((r && r.stdout) || '');
+            if (out.trim()) return out;
+          } catch (e) {}
+          try {
+            const r2 = await process.exec('sh', ['-c', 'cat ' + path + ' 2>/dev/null'], { timeout: to });
+            const out2 = String((r2 && r2.stdout) || '');
+            if (out2.trim()) return out2;
+          } catch (e2) {}
+          return '';
+        },
+        async writeFile(path, content, timeout) {
+          const to = timeout || 3000;
+          try {
+            const safe = String(content).replace(/'/g, "'\\''");
+            const r = await process.exec('sh', ['-c', "echo '" + safe + "' > " + path], { timeout: to });
+            return r && r.code === 0;
+          } catch (e) {
+            console.warn('[radio] writeFile err:', path, e);
+            return false;
+          }
+        }
+      };
+      this._radioSettingsIO = io;
+
+      // 4. 读入并应用完整配置（电台、音量、收藏、频谱样式、色彩方案、播放模式）
+      try {
+        const cfg = await RadioSettings.load(io);
+        RadioSettings.apply(this, cfg);
+      } catch (e) {
+        console.warn('[radio] load config error:', e);
+      }
+
+      // 5. 绑定物理按键
+      this.bindPhysicalKeys();
+
+      // 6. 开启频谱能量轮询
+      this.startSpectrumPolling();
+
+      // 7. 配置已完全就绪，起播电台
+      this.startPlayback();
+    },
+
+    bindPhysicalKeys() {
+      const self = this;
+      try {
+        const Ctor = buttonEventModule.ButtonEvent || buttonEventModule.buttonEvent;
+        const be = new Ctor();
+        this._be = be;
+        if (be.setButtonEventReady) be.setButtonEventReady(true);
+
+        const onBack = () => {
+          console.warn('[radio] 物理按键触发: 上一首 (Back)');
+          if (self.settingsOpen) { self.closeSettings(); return; }
+          if (self.view === 'list') {
+            if (self.pg > 0) { self.turnPage(-1); } else { self.view = 'main'; }
+            return;
+          }
+          self.cut(-1);
+        };
+        const onForward = () => {
+          console.warn('[radio] 物理按键触发: 下一首 (Forward)');
+          if (self.view === 'list') { self.turnPage(1); return; }
+          self.cut(1);
+        };
+        const onPlay = () => {
+          console.warn('[radio] 物理按键触发: 播放/暂停 (Play/Home)');
+          self.toggle();
+        };
+
+        const bindSig = (sig, fn) => {
+          if (!sig) return;
+          if (typeof sig.on === 'function') {
+            sig.on(fn);
+          } else if (typeof sig.connect === 'function') {
+            sig.connect(fn);
+          }
+        };
+
+        bindSig(be.backButtonClick, onBack);
+        bindSig(be.forwardButtonClick, onForward);
+        bindSig(be.playButtonClick, onPlay);
+        const adjustVolume = (direction) => {
+          const current = self._masterVolume;
+          const target = Math.max(0, Math.min(100, current + direction));
+          try { if (self._volume) self._volume.setVolume(target); } catch (e) {}
+          self._masterVolume = target;
+          self.volumeLevel = target;
+          RadioSettings.setVolume(self, target);
+        };
+        bindSig(be.volumeUpButtonClick, () => adjustVolume(1));
+        bindSig(be.volumeDownButtonClick, () => adjustVolume(-1));
+        console.warn('[radio] 物理按键(上一首/下一首/播放暂停)监听就绪');
+      } catch (e) {
+        console.warn('[radio] buttonEvent 注册异常: ' + e);
+      }
+    },
+
+    startSpectrumPolling() {
+      const self = this;
+      this._realSpec = null;
+      this._lastRealSpecTime = 0;
+      this._specPoll = setInterval(function () {
+        if (self.view !== 'main' || self.settingsOpen || !self.playing) return;
+        process.exec('sh', ['-c', 'cat /tmp/e6_spec.raw 2>/dev/null'], { timeout: 300 }).then(function (r) {
+          const out = (r && r.stdout) ? String(r.stdout).trim() : '';
+          if (out) {
+            const parts = out.split(',');
+            if (parts.length === 16) {
+              const vals = [];
+              for (let k = 0; k < 16; k++) {
+                vals.push(parseFloat(parts[k]) || 0.08);
+              }
+              self._realSpec = vals;
+              self._lastRealSpecTime = Date.now();
+            }
+          }
+        }).catch(function () {});
+      }, 120);
+    },
+
+    startWaveLoop() {
+      const self = this;
+      this._wave = setInterval(function () {
+        if (self.view !== 'main' || self.settingsOpen) return;
+        const cur = self.spec;
+        if (!self.playing) {
+          const rst = [];
+          const rst2 = [];
+          const t = Date.now() / 600;
+          for (let i = 0; i < 16; i++) {
+            const calm = 0.08 + Math.sin(t + i * 0.45) * 0.035;
+            rst.push(calm);
+            rst2.push(calm);
+          }
+          self.spec = rst;
+          self.peak = rst2;
+          return;
+        }
+
+        const isRealFresh = self._realSpec && (Date.now() - (self._lastRealSpecTime || 0) < 800);
+        const next = [];
+        for (let i = 0; i < 16; i++) {
+          let target;
+          if (isRealFresh) {
+            target = self._realSpec[i];
+          } else {
+            const r = Math.random();
+            target = r * r;
+          }
+          next.push(target > cur[i] ? (cur[i] * 0.25 + target * 0.75) : cur[i] * 0.84);
+        }
+        const sm = [];
+        for (let j = 0; j < 16; j++) {
+          const l = j > 0 ? next[j - 1] : next[j];
+          const r2 = j < 15 ? next[j + 1] : next[j];
+          sm.push((l + 2 * next[j] + r2) / 4);
+        }
+        self.spec = sm;
+        self._specHist.unshift(sm.slice());
+        if (self._specHist.length > 3) self._specHist.length = 3;
+        const pk = [];
+        for (let k2 = 0; k2 < 16; k2++) {
+          const p0 = self.peak[k2] || 0;
+          pk.push(sm[k2] > p0 ? sm[k2] : Math.max(0, p0 - 0.025));
+        }
+        self.peak = pk;
+
+        let eL = 0, eR = 0;
+        for (let k = 0; k < 8; k++) eL += (sm[k] || 0);
+        for (let k = 8; k < 16; k++) eR += (sm[k] || 0);
+        const rawAvgL = eL / 8;
+        const rawAvgR = eR / 8;
+
+        if (!self.playing) {
+          self.dbmValL = 0;
+          self.dbmValR = 0;
+          self.dbmPeakL = Math.max(0, (self.dbmPeakL || 0) - 0.04);
+          self.dbmPeakR = Math.max(0, (self.dbmPeakR || 0) - 0.04);
+        } else {
+          const dbL = Math.max(-60, Math.min(0, 20 * Math.log10(Math.max(0.0005, rawAvgL))));
+          const dbR = Math.max(-60, Math.min(0, 20 * Math.log10(Math.max(0.0005, rawAvgR))));
+          const normL = Math.max(0.06, Math.min(0.92, (dbL + 46) / 48));
+          const normR = Math.max(0.06, Math.min(0.92, (dbR + 46) / 48));
+
+          self.dbmValL = normL;
+          self.dbmValR = normR;
+          self.dbmPeakL = normL > (self.dbmPeakL || 0) ? normL : Math.max(0, (self.dbmPeakL || 0) - 0.02);
+          self.dbmPeakR = normR > (self.dbmPeakR || 0) ? normR : Math.max(0, (self.dbmPeakR || 0) - 0.02);
+        }
+      }, 120);
+    },
+
     openSettings() { this.settingsOpen = true; },
     closeSettings() { this.settingsOpen = false; },
     openQuickVol() { this.quickVolOpen = true; },
@@ -2590,7 +2584,7 @@ export default {
       this._masterVolume = target;
       this.volumeLevel = target;
       try { if (this._volume) this._volume.setVolume(target); } catch (e) {}
-      process.exec('sh', ['-c', 'echo ' + target + ' > /userdisk/radio_volume.txt']);
+      RadioSettings.setVolume(this, target);
     },
     adjustVolumeBy(delta) { this.setVolumeLevel(this.volumeLevel + delta); },
     volumePresetStyle(level) {
@@ -2958,8 +2952,7 @@ export default {
 
     saveLastStation(idx) {
       try {
-        const p = process.exec('sh', ['-c', 'echo "' + idx + '" > /userdisk/radio_last.txt']);
-        if (p && p.catch) p.catch(function () {});
+        RadioSettings.setStation(this, idx);
       } catch (e) { /* ignore */ }
     },
 
@@ -3016,10 +3009,7 @@ export default {
       this.favs = f;
       this._favSeq = (this._favSeq || 0) + 1;  // 失效列表缓存
       try {
-        const keys = [];
-        for (const k2 in f) keys.push(k2);
-        const p = process.exec('sh', ['-c', 'echo "' + keys.join(',') + '" > /userdisk/radio_fav.txt']);
-        if (p && p.catch) p.catch(function () { /* 落盘失败不影响内存态 */ });
+        RadioSettings.setFavs(this, f);
       } catch (e) { /* ignore */ }
     },
 
@@ -3033,6 +3023,7 @@ export default {
       /* 退出：关后台进程 + 删模式文件（守护立即释放按键）+ 关页 */
       this._playRequestId = (this._playRequestId || 0) + 1;
       this.stopAll();
+      try { RadioSettings.flush(this); } catch (e) {}
       process.exec('sh', ['-c', 'killall e6_sound_meter 2>/dev/null; rm -f /tmp/e6keys.mode /tmp/e6keyed.pid /tmp/e6_audio.url /tmp/e6_spec.raw /tmp/e6_audio_gain']);
       if (this.$page && this.$page.finish) this.$page.finish();
     },
